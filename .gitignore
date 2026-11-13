@@ -1,0 +1,10 @@
+/out/
+.Xil/
+*.jou
+*.log
+*.wdb
+*.wcfg
+*.str
+
+__pycache__/
+*.py[cod]

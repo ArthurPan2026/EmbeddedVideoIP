@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "board": "Digilent Zybo Z7-20",
+  "part": "xc7z020clg400-1",
+  "vivado": "2025.2.1",
+  "video_output": {
+    "mode": "640x480p60",
+    "pixel_clock_mhz": 25.175,
+    "serial_clock_mhz": 125.875,
+    "transmitter_vlnv": "digilentinc.com:ip:rgb2dvi:1.4"
+  },
+  "ps_domain": "freertos_ps7_cortexa9_0",
+  "supported_configuration": "PL+PS"
+}
