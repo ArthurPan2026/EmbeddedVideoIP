@@ -72,6 +72,7 @@ foreach {param value} {
   MAX_SCALER_INPUT_WIDTH 640
   MAX_SCALER_INPUT_HEIGHT 480
   ENABLE_SCALER 1
+  LINE_BUFFER_IMPLEMENTATION 0
 } {
   set iparam [ipx::get_user_parameters $param -of_objects $core]
   if {[llength $iparam] > 0} { set_property value $value $iparam }

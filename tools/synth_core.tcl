@@ -9,7 +9,7 @@ if {$argc >= 4} {
   set profile [lindex $argv 3]
   set generic_values [lrange $argv 4 end]
 }
-if {[lsearch -exact {generic gba passthrough} $profile] < 0} {
+if {[lsearch -exact {generic vdma_scaler_lutram vdma_scaler_bram passthrough} $profile] < 0} {
   error "Unknown synthesis profile: $profile"
 }
 if {$profile eq "generic" && [llength $generic_values] != 0} {
@@ -57,7 +57,7 @@ puts "VIDEO_SYNTH_COMMAND: $synth_command"
 eval $synth_command
 create_clock -name aclk -period 10.000 [get_ports aclk]
 report_utilization -file [file join $out_dir utilization.rpt]
-report_timing_summary -delay_type max -file [file join $out_dir timing_summary.rpt]
+report_timing_summary -delay_type min_max -file [file join $out_dir timing_summary.rpt]
 write_checkpoint -force [file join $out_dir video_pipeline.dcp]
 close_project
 puts "VIDEO_SYNTH_PASS: profile=$profile part=$part_name"

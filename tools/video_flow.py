@@ -16,8 +16,8 @@ from typing import Any, Callable, Iterable, Mapping
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "out"
 MANIFEST = OUT / "manifest.json"
-MANIFEST_SCHEMA_VERSION = 1
-INPUT_PARTITION_VERSION = 2
+MANIFEST_SCHEMA_VERSION = 2
+INPUT_PARTITION_VERSION = 3
 LOCK = json.loads((ROOT / "dependencies.lock.json").read_text(encoding="utf-8"))
 DEFAULT_VIVADO = Path("/tools/AMDDesignTools/2025.2.1/Vivado/bin/vivado")
 
@@ -58,28 +58,37 @@ CATALOG_BD_REL = Path(
 SIM_LOG_REL = Path("out/tests/video-tests.log")
 SIM_TEST_LOG_RELS = (
     Path("out/tests/tb_axis_video_nn_scaler/run.log"),
+    Path("out/tests/tb_axis_video_nn_scaler_bram/run.log"),
     Path("out/tests/tb_video_bram_rgb565_reader/run.log"),
     Path("out/tests/tb_video_pipeline_v1_0/run.log"),
     Path("out/tests/tb_video_pipeline_static_profile/run.log"),
 )
-SYNTH_OUTPUT_NAMES = ("utilization.rpt", "timing_summary.rpt", "video_pipeline.dcp")
+SYNTH_OUTPUT_NAMES = ("utilization.rpt", "timing_summary.rpt", "video_pipeline.dcp", "qor.json")
+_VDMA_SCALER_PROFILE = {
+    "MAX_INPUT_WIDTH": 640,
+    "MAX_INPUT_HEIGHT": 480,
+    "OUTPUT_WIDTH": 640,
+    "OUTPUT_HEIGHT": 480,
+    "ENABLE_BRAM_SOURCE": 0,
+    "ENABLE_HLS_SOURCE": 0,
+    "ENABLE_VDMA_SOURCE": 1,
+    "SOURCE_SELECT_MODE": 1,
+    "FIXED_SOURCE": 2,
+    "FORMAT_SELECT_MODE": 1,
+    "FIXED_FORMAT": 2,
+    "MAX_SCALER_INPUT_WIDTH": 640,
+    "MAX_SCALER_INPUT_HEIGHT": 480,
+    "ENABLE_SCALER": 1,
+}
 SYNTH_PROFILE_GENERICS: dict[str, dict[str, int]] = {
     "generic": {},
-    "gba": {
-        "MAX_INPUT_WIDTH": 640,
-        "MAX_INPUT_HEIGHT": 480,
-        "OUTPUT_WIDTH": 640,
-        "OUTPUT_HEIGHT": 480,
-        "ENABLE_BRAM_SOURCE": 0,
-        "ENABLE_HLS_SOURCE": 0,
-        "ENABLE_VDMA_SOURCE": 1,
-        "SOURCE_SELECT_MODE": 1,
-        "FIXED_SOURCE": 2,
-        "FORMAT_SELECT_MODE": 1,
-        "FIXED_FORMAT": 2,
-        "MAX_SCALER_INPUT_WIDTH": 240,
-        "MAX_SCALER_INPUT_HEIGHT": 160,
-        "ENABLE_SCALER": 1,
+    "vdma_scaler_lutram": {
+        **_VDMA_SCALER_PROFILE,
+        "LINE_BUFFER_IMPLEMENTATION": 0,
+    },
+    "vdma_scaler_bram": {
+        **_VDMA_SCALER_PROFILE,
+        "LINE_BUFFER_IMPLEMENTATION": 1,
     },
     "passthrough": {
         "MAX_INPUT_WIDTH": 640,
@@ -318,6 +327,124 @@ def output_fingerprint(outputs: list[dict[str, str]]) -> str:
     return sha256_json(outputs)
 
 
+def _parse_utilization_count(report: str, site: str, default: int | None = None) -> int:
+    for line in report.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        columns = [column.strip() for column in line.strip().strip("|").split("|")]
+        if len(columns) >= 2 and columns[0] == site:
+            try:
+                return int(columns[1].replace(",", ""))
+            except ValueError as exc:
+                raise FlowError(f"Invalid utilization count for {site}: {columns[1]!r}") from exc
+    if default is not None:
+        return default
+    raise FlowError(f"Utilization report is missing the {site!r} row.")
+
+
+def parse_synth_reports(utilization_path: Path, timing_path: Path) -> dict[str, Any]:
+    """Extract resource and setup/hold metrics from Vivado OOC reports."""
+    try:
+        utilization = utilization_path.read_text(encoding="utf-8", errors="replace")
+        timing = timing_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise FlowError(f"Cannot read synthesis report: {exc}") from exc
+
+    resources = {
+        "lut": _parse_utilization_count(utilization, "Slice LUTs*"),
+        "ff": _parse_utilization_count(utilization, "Slice Registers"),
+        "lutram": _parse_utilization_count(utilization, "LUT as Distributed RAM", default=0),
+        "bram_tiles": _parse_utilization_count(utilization, "Block RAM Tile"),
+        "dsp": _parse_utilization_count(utilization, "DSPs"),
+        "control_sets": _parse_utilization_count(utilization, "Unique Control Sets"),
+    }
+
+    summary_pos = timing.find("Design Timing Summary")
+    if summary_pos < 0:
+        raise FlowError("Timing report is missing the Design Timing Summary section.")
+    number = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+    summary_text = timing[summary_pos:]
+    summary_with_hold_pattern = re.compile(
+        rf"(?m)^\s*({number})\s+({number})\s+\d+\s+\d+\s+"
+        rf"({number})\s+({number})\s+\d+\s+\d+\s+"
+        rf"({number})\s+({number})\s+\d+\s+\d+\s*$"
+    )
+    summary_without_hold_pattern = re.compile(
+        rf"(?m)^\s*({number})\s+({number})\s+\d+\s+\d+\s+"
+        rf"({number})\s+({number})\s+\d+\s+\d+\s*$"
+    )
+    summary_match = summary_with_hold_pattern.search(summary_text)
+    summary_has_hold = summary_match is not None
+    if summary_match is None:
+        summary_match = summary_without_hold_pattern.search(summary_text)
+    if summary_match is None:
+        raise FlowError("Timing report has no parseable WNS/TNS summary row.")
+
+    def timing_value(value: str) -> float | None:
+        return None if value == "NA" else float(value)
+
+    detail_pattern = re.compile(
+        rf"(?m)^\s*(Setup|Hold)\s*:\s*(NA|\d+)\s+Failing Endpoints,\s*"
+        rf"Worst Slack\s+(NA|{number})\s*(?:ns)?\s*,\s*"
+        rf"Total Violation\s+(NA|{number})\s*(?:ns)?"
+    )
+    details: dict[str, tuple[int | None, float | None, float | None]] = {}
+    for match in detail_pattern.finditer(timing):
+        failing = None if match.group(2) == "NA" else int(match.group(2))
+        details[match.group(1).lower()] = (
+            failing, timing_value(match.group(3)), timing_value(match.group(4))
+        )
+    setup = details.get("setup")
+    hold = details.get("hold")
+    values = summary_match.groups()
+    wns, tns = float(values[0]), float(values[1])
+    whs = float(values[2]) if summary_has_hold else (hold[1] if hold else None)
+    ths = float(values[3]) if summary_has_hold else (hold[2] if hold else None)
+    setup_pass = wns >= 0.0 and abs(tns) < 0.0005 and (setup is None or setup[0] == 0)
+    hold_pass = None if whs is None or ths is None else (
+        whs >= 0.0 and abs(ths) < 0.0005 and (hold is None or hold[0] == 0)
+    )
+    return {
+        "resources": resources,
+        "timing": {
+            "wns_ns": wns,
+            "tns_ns": tns,
+            "whs_ns": whs,
+            "ths_ns": ths,
+            "setup_failing_endpoints": setup[0] if setup else None,
+            "hold_failing_endpoints": hold[0] if hold else None,
+            "setup_pass": setup_pass,
+            "hold_pass": hold_pass,
+            "all_timing_pass": setup_pass and hold_pass is True,
+        },
+    }
+
+
+def write_synth_qor(root: Path, part: str, profile: str, tool_version: str,
+                    input_hash: str) -> dict[str, Any]:
+    output_dir = synth_profile_output_dir(part, profile, root)
+    metrics = parse_synth_reports(
+        output_dir / "utilization.rpt", output_dir / "timing_summary.rpt"
+    )
+    metrics.update({
+        "schema_version": 1,
+        "stage": "synth",
+        "profile": profile,
+        "part": part,
+        "vivado_version": tool_version,
+        "input_sha256": input_hash,
+        "report_sha256": {
+            "utilization.rpt": sha256_file(output_dir / "utilization.rpt"),
+            "timing_summary.rpt": sha256_file(output_dir / "timing_summary.rpt"),
+            "video_pipeline.dcp": sha256_file(output_dir / "video_pipeline.dcp"),
+        },
+    })
+    (output_dir / "qor.json").write_text(
+        json.dumps(metrics, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    return metrics
+
+
 def outputs_match(name: str, record: Mapping[str, Any], root: Path = ROOT,
                   part: str | None = None, profile: str | None = None) -> bool:
     recorded = record.get("outputs")
@@ -405,6 +532,17 @@ def run_stage(name: str, command: list[str], vivado: Path,
         sim_log.parent.mkdir(parents=True, exist_ok=True)
         sim_log.write_text(output, encoding="utf-8", errors="replace")
 
+    qor = None
+    if name == "synth":
+        if part is None:
+            raise FlowError("Synthesis QoR collection requires a part.")
+        qor = write_synth_qor(root, part, profile or "generic", version, input_hash)
+        if not qor["timing"]["setup_pass"]:
+            raise FlowError(
+                f"Synthesis setup timing failed for {profile}: "
+                f"WNS={qor['timing']['wns_ns']} ns, TNS={qor['timing']['tns_ns']} ns."
+            )
+
     outputs = output_manifest(name, root, part, profile)
     stages[stage_key] = {
         "status": "succeeded",
@@ -420,6 +558,7 @@ def run_stage(name: str, command: list[str], vivado: Path,
         "log": log.relative_to(root).as_posix(),
         "outputs": outputs,
         "output_sha256": output_fingerprint(outputs),
+        **({"qor": qor} if qor is not None else {}),
     }
     write_manifest(data, root)
     print(f"VIDEO_FLOW_STAGE_PASS: {stage_key}")
@@ -519,6 +658,19 @@ def command_status(_: argparse.Namespace) -> None:
         except (FlowError, OSError, ValueError):
             state = "stale"
         print(f"{stage_key}: {state} (Vivado {record.get('vivado_version')}, part {part}, profile {profile})")
+        qor = record.get("qor")
+        if stage == "synth" and isinstance(qor, dict):
+            resources = qor.get("resources", {})
+            timing = qor.get("timing", {})
+            if isinstance(resources, dict) and isinstance(timing, dict):
+                print(
+                    "  QoR: "
+                    f"LUT={resources.get('lut')} FF={resources.get('ff')} "
+                    f"LUTRAM={resources.get('lutram')} BRAM={resources.get('bram_tiles')} "
+                    f"DSP={resources.get('dsp')} WNS={timing.get('wns_ns')} ns "
+                    f"TNS={timing.get('tns_ns')} ns WHS={timing.get('whs_ns')} ns "
+                    f"THS={timing.get('ths_ns')} ns"
+                )
 
 
 def main() -> int:

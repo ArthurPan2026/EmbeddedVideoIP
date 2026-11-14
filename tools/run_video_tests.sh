@@ -25,6 +25,8 @@ run_xsim() {
 hdl="$repo_root/ip/video_pipeline_1_0/hdl"
 run_xsim tb_axis_video_nn_scaler \
   "$hdl/axis_video_nn_scaler.sv" "$repo_root/tests/rtl/tb_axis_video_nn_scaler.sv"
+run_xsim tb_axis_video_nn_scaler_bram \
+  "$hdl/axis_video_nn_scaler.sv" "$repo_root/tests/rtl/tb_axis_video_nn_scaler.sv"
 run_xsim tb_video_bram_rgb565_reader \
   "$hdl/video_bram_rgb565_reader.sv" "$repo_root/tests/rtl/tb_video_bram_rgb565_reader.sv"
 run_xsim tb_video_pipeline_v1_0 \
@@ -42,5 +44,5 @@ gcc -std=c99 -Wall -Wextra -Werror -pedantic \
   -I"$repo_root/software" "$repo_root/software/video_out.c" \
   "$repo_root/tests/host/test_video_out.c" -o "$out_root/test_video_out"
 "$out_root/test_video_out"
-python3 -m unittest discover -s "$repo_root/tests/host" -p "test_install_ps_library.py" -v
+python3 -m unittest discover -s "$repo_root/tests/host" -v
 echo "VIDEO_TESTS_PASS"

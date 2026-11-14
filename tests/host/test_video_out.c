@@ -150,18 +150,18 @@ int main(void)
     CHECK(VideoOut_Configure(&io, &cfg, 0x10000000ULL, 0U) != 0,
           "zero width was not rejected");
 
-    cfg.width = 240U;
-    cfg.height = 160U;
-    cfg.stride_bytes = 960U;
+    cfg.width = 320U;
+    cfg.height = 180U;
+    cfg.stride_bytes = 1280U;
     cfg.initial_frame_index = 2U;
     fake.vdma_calls = 0U;
     CHECK(VideoOut_Configure(&io, &cfg, 0x10000000ULL, 0U) == 0,
-          "240x160 fit configuration rejected");
-    CHECK(fake.regs[7] == ((426U << 16) | 640U) &&
-          fake.regs[8] == (27U << 16) &&
-          fake.regs[10] == (240U << 16) &&
-          fake.regs[11] == ((160U << 16)),
-          "240x160 fit geometry/ratio mismatch");
+          "320x180 fit configuration rejected");
+    CHECK(fake.regs[7] == ((360U << 16) | 640U) &&
+          fake.regs[8] == (60U << 16) &&
+          fake.regs[10] == (320U << 16) &&
+          fake.regs[11] == (180U << 16),
+          "320x180 fit geometry/ratio mismatch");
     CHECK(fake.vdma_initial_frame == 2U, "initial park index was not forwarded");
 
     cfg.width = 320U;

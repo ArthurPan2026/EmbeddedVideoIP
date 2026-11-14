@@ -20,6 +20,8 @@ Output timing is fixed at 640x480p60 in V1. With bypass selected, the source is 
 
 The maximum input dimensions are synthesis parameters. The default is 640x480; increase them only when the target device resource and timing reports support the new configuration.
 
+The line-buffer implementation is a synthesis parameter on the same IP. `LINE_BUFFER_IMPLEMENTATION=0` selects asynchronous distributed RAM and is the default. `LINE_BUFFER_IMPLEMENTATION=1` selects synchronous block RAM and adds a registered pixel-read stage. The stage holds pixel data and AXI sideband signals under downstream backpressure, then refills on an accepted active pixel. The first active pixel in a row is prefetched during the left border when one is present. Validate each implementation on the target device because BRAM capacity and timing differ by device.
+
 ## Runtime configuration
 
 Vivado IP parameters provide safe defaults and the maximum line-buffer width. AXI-Lite configures source, input width/height, stride, format, scale/aspect mode, and enable. The paired PS library computes active dimensions, padding, source origin, and integer DDA step/remainder, then writes those derived registers before committing at a frame boundary. This keeps variable division out of the high-rate RTL path. Invalid zero/oversize geometry or ratios are rejected and set sticky status bits; clear them through AXI-Lite. A malformed frame is discarded until the next SOF.

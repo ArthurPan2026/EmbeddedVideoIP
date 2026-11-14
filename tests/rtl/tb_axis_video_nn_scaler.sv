@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_axis_video_nn_scaler;
+module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATION = 0);
   logic clk = 1'b0;
   logic rst_n = 1'b0;
   always #5 clk = ~clk;
@@ -38,7 +38,8 @@ module tb_axis_video_nn_scaler;
   axis_video_nn_scaler #(
     .MAX_INPUT_WIDTH(4), .MAX_INPUT_HEIGHT(4),
     .OUTPUT_WIDTH(4), .OUTPUT_HEIGHT(4),
-    .MAX_BUFFER_WIDTH(2), .MAX_BUFFER_HEIGHT(2)
+    .MAX_BUFFER_WIDTH(2), .MAX_BUFFER_HEIGHT(2),
+    .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION)
   ) dut (
     .aclk(clk), .aresetn(rst_n),
     .cfg_width(cfg_width), .cfg_height(cfg_height),
@@ -278,4 +279,8 @@ module tb_axis_video_nn_scaler;
     $display("TEST_PASS: tb_axis_video_nn_scaler");
     $finish;
   end
+endmodule
+
+module tb_axis_video_nn_scaler_bram;
+  tb_axis_video_nn_scaler #(.LINE_BUFFER_IMPLEMENTATION(1)) test();
 endmodule

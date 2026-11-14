@@ -19,7 +19,9 @@ module video_pipeline_v1_0 #(
   parameter int unsigned MAX_SCALER_INPUT_WIDTH = MAX_INPUT_WIDTH,
   parameter int unsigned MAX_SCALER_INPUT_HEIGHT = MAX_INPUT_HEIGHT,
   // 0 creates a frame-aware AXI-Stream straight-through path with no scaler.
-  parameter int unsigned ENABLE_SCALER = 1
+  parameter int unsigned ENABLE_SCALER = 1,
+  // 0 uses LUTRAM for the scaler line store; 1 uses synchronous BRAM.
+  parameter int unsigned LINE_BUFFER_IMPLEMENTATION = 0
 ) (
   input logic aclk, input logic aresetn,
 
@@ -368,7 +370,8 @@ module video_pipeline_v1_0 #(
       axis_video_nn_scaler #(
         .MAX_BUFFER_WIDTH(MAX_SCALER_INPUT_WIDTH),
         .MAX_BUFFER_HEIGHT(MAX_SCALER_INPUT_HEIGHT),
-        .OUTPUT_WIDTH(OUTPUT_WIDTH), .OUTPUT_HEIGHT(OUTPUT_HEIGHT)
+        .OUTPUT_WIDTH(OUTPUT_WIDTH), .OUTPUT_HEIGHT(OUTPUT_HEIGHT),
+        .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION)
       ) u_scaler (
         .aclk(aclk), .aresetn(stream_resetn),
         .cfg_width(active_width), .cfg_height(active_height),

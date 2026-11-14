@@ -38,7 +38,7 @@ if {[llength $register_segment] > 0} {
   }
 }
 validate_bd_design
-# Re-customize the same catalog instance with the concrete GBA static profile.
+# Re-customize the same catalog instance with a fixed-source scaler profile.
 set_property -dict [list \
   CONFIG.ENABLE_BRAM_SOURCE {0} \
   CONFIG.ENABLE_HLS_SOURCE {0} \
@@ -47,13 +47,15 @@ set_property -dict [list \
   CONFIG.FIXED_SOURCE {2} \
   CONFIG.FORMAT_SELECT_MODE {1} \
   CONFIG.FIXED_FORMAT {2} \
-  CONFIG.MAX_SCALER_INPUT_WIDTH {240} \
-  CONFIG.MAX_SCALER_INPUT_HEIGHT {160} \
+  CONFIG.MAX_SCALER_INPUT_WIDTH {640} \
+  CONFIG.MAX_SCALER_INPUT_HEIGHT {480} \
   CONFIG.ENABLE_SCALER {1} \
+  CONFIG.LINE_BUFFER_IMPLEMENTATION {1} \
 ] [get_bd_cells video_pipeline_0]
-if {[get_property CONFIG.MAX_SCALER_INPUT_WIDTH [get_bd_cells video_pipeline_0]] != 240 ||
-    [get_property CONFIG.MAX_SCALER_INPUT_HEIGHT [get_bd_cells video_pipeline_0]] != 160} {
-  error "IP catalog did not retain GBA scaler buffer limits"
+if {[get_property CONFIG.MAX_SCALER_INPUT_WIDTH [get_bd_cells video_pipeline_0]] != 640 ||
+    [get_property CONFIG.MAX_SCALER_INPUT_HEIGHT [get_bd_cells video_pipeline_0]] != 480 ||
+    [get_property CONFIG.LINE_BUFFER_IMPLEMENTATION [get_bd_cells video_pipeline_0]] != 1} {
+  error "IP catalog did not retain fixed-source scaler parameters"
 }
 validate_bd_design
 save_bd_design

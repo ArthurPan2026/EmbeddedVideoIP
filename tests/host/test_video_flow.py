@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -11,25 +12,54 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import video_flow
 
+UTILIZATION_FIXTURE = """\
+| Slice LUTs*                | 100 |     0 |          0 | 53200 | 0.19 |
+| Slice Registers            | 80  |     0 |          0 | 106400 | 0.08 |
+| LUT as Distributed RAM      | 20  |     0 |            |        |      |
+| Unique Control Sets        | 12  |       |          0 | 13300 | 0.09 |
+| Block RAM Tile             | 1   |     0 |          0 | 140 | 0.71 |
+| DSPs                       | 2   |     0 |          0 | 220 | 0.91 |
+"""
+TIMING_FIXTURE = """\
+| Design Timing Summary
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints
+      1.000        0.000                      0                   10        0.100        0.000                      0                   10        0.500        0.000                       0                   10
+Setup :            0  Failing Endpoints,  Worst Slack        1.000ns,  Total Violation        0.000ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.100ns,  Total Violation        0.000ns
+"""
+
+
+def write_synth_fixture(output_dir: Path, name: str = "fixture") -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "utilization.rpt").write_text(UTILIZATION_FIXTURE, encoding="utf-8")
+    (output_dir / "timing_summary.rpt").write_text(TIMING_FIXTURE, encoding="utf-8")
+    (output_dir / "video_pipeline.dcp").write_bytes(f"dcp-{name}".encode("ascii"))
+
 
 class VideoFlowProfileTests(unittest.TestCase):
     def test_profile_parameter_maps(self) -> None:
         self.assertEqual(video_flow.synth_profile_generics("generic"), {})
-        gba = video_flow.synth_profile_generics("gba")
-        self.assertEqual(gba["MAX_INPUT_WIDTH"], 640)
-        self.assertEqual(gba["MAX_INPUT_HEIGHT"], 480)
-        self.assertEqual(gba["OUTPUT_WIDTH"], 640)
-        self.assertEqual(gba["OUTPUT_HEIGHT"], 480)
-        self.assertEqual(gba["ENABLE_BRAM_SOURCE"], 0)
-        self.assertEqual(gba["ENABLE_HLS_SOURCE"], 0)
-        self.assertEqual(gba["ENABLE_VDMA_SOURCE"], 1)
-        self.assertEqual(gba["SOURCE_SELECT_MODE"], 1)
-        self.assertEqual(gba["FIXED_SOURCE"], 2)
-        self.assertEqual(gba["FORMAT_SELECT_MODE"], 1)
-        self.assertEqual(gba["FIXED_FORMAT"], 2)
-        self.assertEqual(gba["MAX_SCALER_INPUT_WIDTH"], 240)
-        self.assertEqual(gba["MAX_SCALER_INPUT_HEIGHT"], 160)
-        self.assertEqual(gba["ENABLE_SCALER"], 1)
+        lutram = video_flow.synth_profile_generics("vdma_scaler_lutram")
+        self.assertEqual(lutram["MAX_INPUT_WIDTH"], 640)
+        self.assertEqual(lutram["MAX_INPUT_HEIGHT"], 480)
+        self.assertEqual(lutram["OUTPUT_WIDTH"], 640)
+        self.assertEqual(lutram["OUTPUT_HEIGHT"], 480)
+        self.assertEqual(lutram["ENABLE_BRAM_SOURCE"], 0)
+        self.assertEqual(lutram["ENABLE_HLS_SOURCE"], 0)
+        self.assertEqual(lutram["ENABLE_VDMA_SOURCE"], 1)
+        self.assertEqual(lutram["SOURCE_SELECT_MODE"], 1)
+        self.assertEqual(lutram["FIXED_SOURCE"], 2)
+        self.assertEqual(lutram["FORMAT_SELECT_MODE"], 1)
+        self.assertEqual(lutram["FIXED_FORMAT"], 2)
+        self.assertEqual(lutram["MAX_SCALER_INPUT_WIDTH"], 640)
+        self.assertEqual(lutram["MAX_SCALER_INPUT_HEIGHT"], 480)
+        self.assertEqual(lutram["ENABLE_SCALER"], 1)
+        self.assertEqual(lutram["LINE_BUFFER_IMPLEMENTATION"], 0)
+
+        bram = video_flow.synth_profile_generics("vdma_scaler_bram")
+        self.assertEqual(bram["MAX_SCALER_INPUT_WIDTH"], 640)
+        self.assertEqual(bram["ENABLE_SCALER"], 1)
+        self.assertEqual(bram["LINE_BUFFER_IMPLEMENTATION"], 1)
 
         passthrough = video_flow.synth_profile_generics("passthrough")
         self.assertEqual(passthrough["ENABLE_BRAM_SOURCE"], 0)
@@ -47,32 +77,51 @@ class VideoFlowProfileTests(unittest.TestCase):
         with self.assertRaises(video_flow.FlowError):
             video_flow.synth_profile_generics("unknown")
 
-    def test_synth_tcl_batches_generic_overrides_as_one_option(self) -> None:
+    def test_synth_tcl_adds_validated_generic_pairs(self) -> None:
         synth_tcl = (REPO_ROOT / "tools/synth_core.tcl").read_text(encoding="utf-8")
         self.assertEqual(synth_tcl.count("lappend synth_command -generic"), 1)
-        self.assertIn("lappend synth_command -generic $generic_values", synth_tcl)
-        self.assertIn("synth_design {*}$synth_command", synth_tcl)
+        self.assertIn("lappend synth_command -generic $generic", synth_tcl)
+        self.assertIn("eval $synth_command", synth_tcl)
+        self.assertNotIn("synth_design {*}$synth_command", synth_tcl)
         self.assertIn('puts "VIDEO_SYNTH_COMMAND: $synth_command"', synth_tcl)
+
+    def test_synth_report_parser_collects_resources_and_setup_hold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            utilization = root / "utilization.rpt"
+            timing = root / "timing_summary.rpt"
+            utilization.write_text(UTILIZATION_FIXTURE, encoding="utf-8")
+            timing.write_text(TIMING_FIXTURE, encoding="utf-8")
+            metrics = video_flow.parse_synth_reports(utilization, timing)
+
+        self.assertEqual(metrics["resources"], {
+            "lut": 100, "ff": 80, "lutram": 20,
+            "bram_tiles": 1, "dsp": 2, "control_sets": 12,
+        })
+        self.assertEqual(metrics["timing"]["wns_ns"], 1.0)
+        self.assertEqual(metrics["timing"]["whs_ns"], 0.1)
+        self.assertTrue(metrics["timing"]["all_timing_pass"])
 
     def test_command_synth_forwards_selected_generics_and_profile_path(self) -> None:
         vivado = Path("/fake/vivado")
-        args = SimpleNamespace(vivado=str(vivado), part="xc7z020clg400-1", profile="gba")
+        args = SimpleNamespace(vivado=str(vivado), part="xc7z020clg400-1", profile="vdma_scaler_lutram")
         with patch.object(video_flow, "resolve_vivado", return_value=vivado), patch.object(video_flow, "vivado_version", return_value="2025.2.1"), patch.object(video_flow, "input_manifest", return_value={"rtl": "sha"}), patch.object(video_flow, "run_stage") as run_stage:
             video_flow.command_synth(args)
 
         command = run_stage.call_args.args[1]
         self.assertEqual(run_stage.call_args.args[0], "synth")
-        self.assertIn("profiles/gba", command[command.index("-tclargs") + 3])
+        self.assertIn("profiles/vdma_scaler_lutram", command[command.index("-tclargs") + 3])
         forwarded = set(command[command.index("-tclargs") + 4:])
         self.assertIn("ENABLE_BRAM_SOURCE=0", forwarded)
         self.assertIn("ENABLE_HLS_SOURCE=0", forwarded)
         self.assertIn("ENABLE_VDMA_SOURCE=1", forwarded)
         self.assertIn("FIXED_SOURCE=2", forwarded)
         self.assertIn("FIXED_FORMAT=2", forwarded)
-        self.assertIn("MAX_SCALER_INPUT_WIDTH=240", forwarded)
-        self.assertIn("MAX_SCALER_INPUT_HEIGHT=160", forwarded)
+        self.assertIn("MAX_SCALER_INPUT_WIDTH=640", forwarded)
+        self.assertIn("MAX_SCALER_INPUT_HEIGHT=480", forwarded)
         self.assertIn("ENABLE_SCALER=1", forwarded)
-        self.assertEqual(run_stage.call_args.kwargs["profile"], "gba")
+        self.assertIn("LINE_BUFFER_IMPLEMENTATION=0", forwarded)
+        self.assertEqual(run_stage.call_args.kwargs["profile"], "vdma_scaler_lutram")
 
     def test_profiles_use_independent_cache_keys_and_output_directories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -83,9 +132,8 @@ class VideoFlowProfileTests(unittest.TestCase):
             def runner_for(profile: str):
                 def runner(command, cwd, text, capture_output, check, env):
                     calls.append(profile)
-                    for output in video_flow.stage_output_paths("synth", root, part, profile):
-                        output.parent.mkdir(parents=True, exist_ok=True)
-                        output.write_text(f"{profile}:{output.name}\\n", encoding="utf-8")
+                    output_dir = video_flow.synth_profile_output_dir(part, profile, root)
+                    write_synth_fixture(output_dir, profile)
                     return SimpleNamespace(
                         returncode=0,
                         stdout=f"VIDEO_SYNTH_PASS: profile={profile}\\n",
@@ -94,7 +142,7 @@ class VideoFlowProfileTests(unittest.TestCase):
                 return runner
 
             inputs = {"rtl": "same-inputs"}
-            for profile in ("generic", "gba", "passthrough"):
+            for profile in ("generic", "vdma_scaler_lutram", "vdma_scaler_bram", "passthrough"):
                 command = ["vivado", "synth_core.tcl", profile]
                 video_flow.run_stage(
                     "synth", command, Path("/fake/vivado"), inputs, part,
@@ -103,29 +151,31 @@ class VideoFlowProfileTests(unittest.TestCase):
                 )
 
             generic_dir = root / "out/synth" / part
-            gba_dir = root / "out/synth" / part / "profiles/gba"
+            lutram_dir = root / "out/synth" / part / "profiles/vdma_scaler_lutram"
+            bram_dir = root / "out/synth" / part / "profiles/vdma_scaler_bram"
             passthrough_dir = root / "out/synth" / part / "profiles/passthrough"
             generic_before = (generic_dir / "utilization.rpt").read_text(encoding="utf-8")
-            self.assertEqual((gba_dir / "utilization.rpt").read_text(encoding="utf-8"), "gba:utilization.rpt\\n")
+            self.assertEqual((lutram_dir / "utilization.rpt").read_text(encoding="utf-8"), UTILIZATION_FIXTURE)
+            self.assertTrue((bram_dir / "qor.json").is_file())
             self.assertEqual(
-                (passthrough_dir / "utilization.rpt").read_text(encoding="utf-8"),
-                "passthrough:utilization.rpt\\n",
+                json.loads((bram_dir / "qor.json").read_text(encoding="utf-8"))["profile"],
+                "vdma_scaler_bram",
             )
-            self.assertNotEqual(gba_dir, passthrough_dir)
+            self.assertNotEqual(lutram_dir, passthrough_dir)
 
             hit = video_flow.run_stage(
-                "synth", ["vivado", "synth_core.tcl", "gba"], Path("/fake/vivado"),
-                inputs, part, root=root, tool_version="2025.2.1", profile="gba",
-                runner=runner_for("gba"), success_marker="VIDEO_SYNTH_PASS",
+                "synth", ["vivado", "synth_core.tcl", "vdma_scaler_lutram"], Path("/fake/vivado"),
+                inputs, part, root=root, tool_version="2025.2.1", profile="vdma_scaler_lutram",
+                runner=runner_for("vdma_scaler_lutram"), success_marker="VIDEO_SYNTH_PASS",
             )
             self.assertFalse(hit)
-            self.assertEqual(calls, ["generic", "gba", "passthrough"])
+            self.assertEqual(calls, ["generic", "vdma_scaler_lutram", "vdma_scaler_bram", "passthrough"])
             self.assertEqual((generic_dir / "utilization.rpt").read_text(encoding="utf-8"), generic_before)
 
             manifest = video_flow.read_manifest(root)
             self.assertEqual(
                 set(manifest["stages"]),
-                {"synth:generic", "synth:gba", "synth:passthrough"},
+                {"synth:generic", "synth:vdma_scaler_lutram", "synth:vdma_scaler_bram", "synth:passthrough"},
             )
 
 class VideoFlowInputPartitionTests(unittest.TestCase):
@@ -235,10 +285,7 @@ class VideoFlowCacheTests(unittest.TestCase):
         def runner(command, cwd, text, capture_output, check, env):
             calls.append(command)
             output_dir = Path(cwd) / "synth/xc7z020clg400-1"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            (output_dir / "utilization.rpt").write_text("LUT 100\n", encoding="utf-8")
-            (output_dir / "timing_summary.rpt").write_text("WNS 1.0\n", encoding="utf-8")
-            (output_dir / "video_pipeline.dcp").write_bytes(b"dcp-content")
+            write_synth_fixture(output_dir, f"call-{len(calls)}")
             return SimpleNamespace(
                 returncode=0,
                 stdout="VIDEO_SYNTH_PASS: part=xc7z020clg400-1\n",

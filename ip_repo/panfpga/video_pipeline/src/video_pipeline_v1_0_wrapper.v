@@ -15,7 +15,8 @@ module video_pipeline_v1_0_wrapper #(
   parameter integer FIXED_FORMAT = 2,
   parameter integer MAX_SCALER_INPUT_WIDTH = MAX_INPUT_WIDTH,
   parameter integer MAX_SCALER_INPUT_HEIGHT = MAX_INPUT_HEIGHT,
-  parameter integer ENABLE_SCALER = 1
+  parameter integer ENABLE_SCALER = 1,
+  parameter integer LINE_BUFFER_IMPLEMENTATION = 0
 ) (
   input wire aclk,
   input wire aresetn,
@@ -73,7 +74,8 @@ module video_pipeline_v1_0_wrapper #(
     .FIXED_FORMAT(FIXED_FORMAT),
     .MAX_SCALER_INPUT_WIDTH(MAX_SCALER_INPUT_WIDTH),
     .MAX_SCALER_INPUT_HEIGHT(MAX_SCALER_INPUT_HEIGHT),
-    .ENABLE_SCALER(ENABLE_SCALER)
+    .ENABLE_SCALER(ENABLE_SCALER),
+    .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION)
   ) core (
     .aclk(aclk), .aresetn(aresetn),
     .bram_en(bram_en), .bram_addr(bram_addr), .bram_dout(bram_dout),

@@ -12,6 +12,7 @@ proc init_gui { IPINST } {
   ipgui::add_param $IPINST -name "FIXED_FORMAT" -parent ${Page_0}
   ipgui::add_param $IPINST -name "FIXED_SOURCE" -parent ${Page_0}
   ipgui::add_param $IPINST -name "FORMAT_SELECT_MODE" -parent ${Page_0}
+  ipgui::add_param $IPINST -name "LINE_BUFFER_IMPLEMENTATION" -parent ${Page_0}
   ipgui::add_param $IPINST -name "MAX_INPUT_HEIGHT" -parent ${Page_0}
   ipgui::add_param $IPINST -name "MAX_INPUT_WIDTH" -parent ${Page_0}
   ipgui::add_param $IPINST -name "MAX_SCALER_INPUT_HEIGHT" -parent ${Page_0}
@@ -101,6 +102,15 @@ proc update_PARAM_VALUE.FORMAT_SELECT_MODE { PARAM_VALUE.FORMAT_SELECT_MODE } {
 
 proc validate_PARAM_VALUE.FORMAT_SELECT_MODE { PARAM_VALUE.FORMAT_SELECT_MODE } {
 	# Procedure called to validate FORMAT_SELECT_MODE
+	return true
+}
+
+proc update_PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION { PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION } {
+	# Procedure called to update LINE_BUFFER_IMPLEMENTATION when any of the dependent parameters in the arguments change
+}
+
+proc validate_PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION { PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION } {
+	# Procedure called to validate LINE_BUFFER_IMPLEMENTATION
 	return true
 }
 
@@ -246,6 +256,11 @@ proc update_MODELPARAM_VALUE.MAX_SCALER_INPUT_HEIGHT { MODELPARAM_VALUE.MAX_SCAL
 proc update_MODELPARAM_VALUE.ENABLE_SCALER { MODELPARAM_VALUE.ENABLE_SCALER PARAM_VALUE.ENABLE_SCALER } {
 	# Procedure called to set VHDL generic/Verilog parameter value(s) based on TCL parameter value
 	set_property value [get_property value ${PARAM_VALUE.ENABLE_SCALER}] ${MODELPARAM_VALUE.ENABLE_SCALER}
+}
+
+proc update_MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION { MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION } {
+	# Procedure called to set VHDL generic/Verilog parameter value(s) based on TCL parameter value
+	set_property value [get_property value ${PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION}] ${MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION}
 }
 
 

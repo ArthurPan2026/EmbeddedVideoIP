@@ -9,7 +9,9 @@ module axis_video_nn_scaler #(
   parameter int unsigned OUTPUT_WIDTH = 640,
   parameter int unsigned OUTPUT_HEIGHT = 480,
   parameter int unsigned MAX_BUFFER_WIDTH = MAX_INPUT_WIDTH,
-  parameter int unsigned MAX_BUFFER_HEIGHT = MAX_INPUT_HEIGHT
+  parameter int unsigned MAX_BUFFER_HEIGHT = MAX_INPUT_HEIGHT,
+  // 0 uses asynchronous distributed RAM; 1 uses synchronous block RAM.
+  parameter int unsigned LINE_BUFFER_IMPLEMENTATION = 0
 ) (
   input logic aclk, input logic aresetn,
   input logic [15:0] cfg_width, input logic [15:0] cfg_height,
@@ -32,9 +34,12 @@ module axis_video_nn_scaler #(
     ST_EMIT_ROW, ST_DRAIN, ST_PAD_BOTTOM, ST_DROP, ST_BYPASS
   } state_t;
   state_t state;
-  (* ram_style = "distributed" *) logic [23:0] line_buf [0:MAX_BUFFER_WIDTH-1];
   logic line_buf_wr_en, cfg_invalid_geometry, cfg_bypass_1to1;
   logic [9:0] line_buf_wr_addr;
+  logic line_buf_read_issue, line_buf_read_valid, line_buf_read_pop;
+  logic [9:0] line_buf_read_addr;
+  logic [23:0] line_buf_read_data;
+  logic line_buf_pixel_needed;
   logic bypass_start, bypass_active_beat, bypass_beat;
   logic [9:0] in_width, in_height, cap_x, cap_y;
   logic [9:0] x_offset, y_offset, emit_x, out_y_total, active_y_count;
@@ -43,7 +48,7 @@ module axis_video_nn_scaler #(
   logic [9:0] source_x, source_y, source_x_origin;
   logic [9:0] x_step, x_rem, y_step, y_rem;
   logic [10:0] x_error, y_error, x_error_sum, y_error_sum;
-  logic [9:0] next_source_y;
+  logic [9:0] next_source_x, next_source_y;
   logic [10:0] next_y_error;
   logic in_handshake;
 
@@ -91,6 +96,16 @@ module axis_video_nn_scaler #(
     endcase
     in_handshake = s_axis_tvalid && s_axis_tready;
 
+    x_error_sum = x_error + x_rem;
+    if (x_error_sum >= active_width)
+      next_source_x = source_x + x_step + 1'b1;
+    else
+      next_source_x = source_x + x_step;
+    line_buf_pixel_needed = (state == ST_EMIT_ROW) &&
+                            (emit_x >= x_offset) &&
+                            (emit_x < (x_offset + active_width)) &&
+                            (source_x < in_width);
+
     // The scaler only writes its one-line store in scaled mode.
     line_buf_wr_en = 1'b0;
     line_buf_wr_addr = '0;
@@ -109,6 +124,8 @@ module axis_video_nn_scaler #(
                     (state == ST_EMIT_ROW) ||
                     (state == ST_PAD_BOTTOM) ||
                     (bypass_beat && s_axis_tvalid);
+    if ((LINE_BUFFER_IMPLEMENTATION == 1) && line_buf_pixel_needed)
+      m_axis_tvalid = line_buf_read_valid;
     m_axis_tuser = m_axis_tvalid && (out_y_total == 0) && (emit_x == 0);
     m_axis_tlast = m_axis_tvalid && (emit_x == OUTPUT_WIDTH-1);
     m_axis_tdata = 24'd0;
@@ -120,10 +137,26 @@ module axis_video_nn_scaler #(
                  (emit_x >= x_offset) &&
                  (emit_x < (x_offset + active_width)) &&
                  (source_x < in_width)) begin
-      m_axis_tdata = line_buf[source_x];
+      m_axis_tdata = line_buf_read_data;
     end
 
-    x_error_sum = x_error + x_rem;
+    line_buf_read_pop = line_buf_read_valid && m_axis_tvalid && m_axis_tready;
+    line_buf_read_issue = 1'b0;
+    line_buf_read_addr = source_x;
+    if ((LINE_BUFFER_IMPLEMENTATION == 1) && (state == ST_EMIT_ROW)) begin
+      if (line_buf_pixel_needed) begin
+        if (!line_buf_read_valid) begin
+          line_buf_read_issue = 1'b1;
+          line_buf_read_addr = source_x;
+        end else if (line_buf_read_pop) begin
+          // Refill the read stage on the accepted beat to sustain one pixel
+          // per cycle after its first active pixel.
+          line_buf_read_issue = 1'b1;
+          line_buf_read_addr = next_source_x;
+        end
+      end
+    end
+
     y_error_sum = y_error + y_rem;
     if (y_error_sum >= active_height) begin
       next_source_y = source_y + y_step + 1'b1;
@@ -135,10 +168,35 @@ module axis_video_nn_scaler #(
     busy = (state != ST_WAIT_SOF) && (state != ST_DROP);
   end
 
-  always_ff @(posedge aclk) begin
-    if (line_buf_wr_en)
-      line_buf[line_buf_wr_addr] <= s_axis_tdata;
-  end
+  generate
+    if (LINE_BUFFER_IMPLEMENTATION == 0) begin : gen_lutram_line_buffer
+      (* ram_style = "distributed" *) logic [23:0] line_buf [0:MAX_BUFFER_WIDTH-1];
+      assign line_buf_read_data = line_buf[source_x];
+      assign line_buf_read_valid = 1'b1;
+      always_ff @(posedge aclk) begin
+        if (line_buf_wr_en)
+          line_buf[line_buf_wr_addr] <= s_axis_tdata;
+      end
+    end else begin : gen_bram_line_buffer
+      (* ram_style = "block" *) logic [23:0] line_buf [0:MAX_BUFFER_WIDTH-1];
+      logic [23:0] line_buf_read_data_reg;
+      logic line_buf_read_valid_reg;
+      assign line_buf_read_data = line_buf_read_data_reg;
+      assign line_buf_read_valid = line_buf_read_valid_reg;
+      always_ff @(posedge aclk) begin
+        if (line_buf_wr_en)
+          line_buf[line_buf_wr_addr] <= s_axis_tdata;
+        if (!aresetn) begin
+          line_buf_read_valid_reg <= 1'b0;
+        end else if (line_buf_read_issue) begin
+          line_buf_read_data_reg <= line_buf[line_buf_read_addr];
+          line_buf_read_valid_reg <= 1'b1;
+        end else if (line_buf_read_pop || (state != ST_EMIT_ROW)) begin
+          line_buf_read_valid_reg <= 1'b0;
+        end
+      end
+    end
+  endgenerate
 
   always_ff @(posedge aclk) begin
     if (!aresetn) begin
