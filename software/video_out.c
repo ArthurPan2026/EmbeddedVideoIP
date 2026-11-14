@@ -20,6 +20,22 @@
 #define CTRL_STRETCH      (1U << 4)
 #define CTRL_FORMAT_SHIFT 5U
 #define CTRL_COMMIT       (1U << 8)
+#define CTRL_CLEAR_ERRORS (1U << 10)
+#define CTRL_ABORT_STREAM (1U << 11)
+#define CTRL_RESUME_STREAM (1U << 12)
+#define VIDEO_OUT_STATUS_ENABLED       (1U << 0)
+#define VIDEO_OUT_STATUS_STREAM_HELD   (1U << 1)
+#define VIDEO_OUT_STATUS_CONFIG_PENDING (1U << 2)
+#define VIDEO_OUT_STATUS_BUSY          (1U << 4)
+#define VIDEO_OUT_CONFIG_WAIT_READS    1000000U
+
+static void VideoOut_WriteControlPulse(const VideoOutIo *io, uint32_t pulse)
+{
+    uint32_t control = io->read_reg(io->context, REG_CTRL);
+    control &= ~(CTRL_COMMIT | CTRL_CLEAR_ERRORS | CTRL_ABORT_STREAM |
+                 CTRL_RESUME_STREAM);
+    io->write_reg(io->context, REG_CTRL, control | pulse);
+}
 
 typedef struct {
     uint16_t active_width, active_height;
@@ -94,8 +110,10 @@ static int VideoOut_CalcGeometry(const VideoOutConfig *config,
 int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
                        uint64_t frame0, uint32_t vdma_bytes_per_pixel)
 {
-    uint32_t format_bytes, control, active_cfg, offsets, origin;
+    uint32_t format_bytes, control, active_cfg, offsets, origin, status;
+    uint32_t retry;
     VideoOutGeometry geometry;
+    int stream_aborted = 0;
 
     if (!VideoOut_ValidIo(io) || (config == 0))
         return -1;
@@ -115,18 +133,39 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
         return -1;
     if (VideoOut_CalcGeometry(config, &geometry) != 0)
         return -1;
+    if (config->source == VIDEO_OUT_SOURCE_VDMA) {
+        if (io->configure_vdma == 0) return -1;
+        if (vdma_bytes_per_pixel == 0U) vdma_bytes_per_pixel = format_bytes;
+        // V1 VDMA stream is 32-bit: one padded RGB pixel per beat.
+        if ((vdma_bytes_per_pixel != 4U) ||
+            (config->format == VIDEO_OUT_PIX_RGB565)) return -1;
+        if (config->stride_bytes < ((uint32_t)config->width * vdma_bytes_per_pixel))
+            return -1;
+    }
 
     // Wait for the current frame to retire while the active source remains
     // enabled. Switching to the default source first can stop AXI-Stream
     // mid-frame, leaving the scaler busy forever with no TLAST/SOF to recover.
     {
-        uint32_t retry;
-        for (retry = 0U; retry < 1000000U; ++retry) {
-            if ((io->read_reg(io->context, REG_STATUS) & (1U << 4)) == 0U)
+        for (retry = 0U; retry < VIDEO_OUT_CONFIG_WAIT_READS; ++retry) {
+            if ((io->read_reg(io->context, REG_STATUS) & VIDEO_OUT_STATUS_BUSY) == 0U)
                 break;
         }
-        if (retry == 1000000U)
-            return -1;
+        if (retry == VIDEO_OUT_CONFIG_WAIT_READS) {
+            // A continuous AXI-Stream producer may never expose a software-
+            // observable idle cycle. Hold the source, abort the partial frame,
+            // and then apply the new configuration before accepting another SOF.
+            VideoOut_WriteControlPulse(io, CTRL_ABORT_STREAM);
+            stream_aborted = 1;
+            for (retry = 0U; retry < VIDEO_OUT_CONFIG_WAIT_READS; ++retry) {
+                status = io->read_reg(io->context, REG_STATUS);
+                if (((status & VIDEO_OUT_STATUS_BUSY) == 0U) &&
+                    ((status & VIDEO_OUT_STATUS_STREAM_HELD) != 0U))
+                    break;
+            }
+            if (retry == VIDEO_OUT_CONFIG_WAIT_READS)
+                return -1;
+        }
     }
     io->write_reg(io->context, REG_SIZE,
                   ((uint32_t)config->height << 16) | config->width);
@@ -150,22 +189,29 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
     if (config->aspect == VIDEO_OUT_ASPECT_STRETCH) control |= CTRL_STRETCH;
 
     // The callback configures the standard AXI VDMA; it does not own the core registers.
-    if (config->source == VIDEO_OUT_SOURCE_VDMA) {
-        if (io->configure_vdma == 0) return -1;
-        if (vdma_bytes_per_pixel == 0U) vdma_bytes_per_pixel = format_bytes;
-        // V1 VDMA stream width is 32 bits: one padded RGB pixel per beat.
-        if ((vdma_bytes_per_pixel != 4U) ||
-            (config->format == VIDEO_OUT_PIX_RGB565)) return -1;
-        if (config->stride_bytes < ((uint32_t)config->width * vdma_bytes_per_pixel))
-            return -1;
-        if (io->configure_vdma(io->context, frame0, config->width,
-                               config->height, vdma_bytes_per_pixel,
-                               config->stride_bytes,
-                               config->initial_frame_index) != 0) return -1;
+    if ((config->source == VIDEO_OUT_SOURCE_VDMA) &&
+        (io->configure_vdma(io->context, frame0, config->width,
+                            config->height, vdma_bytes_per_pixel,
+                            config->stride_bytes,
+                            config->initial_frame_index) != 0)) {
+        if (stream_aborted)
+            VideoOut_WriteControlPulse(io, CTRL_RESUME_STREAM);
+        return -1;
     }
 
     if (config->enabled != 0U) control |= CTRL_ENABLE;
     io->write_reg(io->context, REG_CTRL, control | CTRL_COMMIT);
+
+    if (stream_aborted) {
+        for (retry = 0U; retry < VIDEO_OUT_CONFIG_WAIT_READS; ++retry) {
+            status = io->read_reg(io->context, REG_STATUS);
+            if (((status & VIDEO_OUT_STATUS_STREAM_HELD) == 0U) &&
+                ((status & VIDEO_OUT_STATUS_CONFIG_PENDING) == 0U))
+                return 0;
+        }
+        VideoOut_WriteControlPulse(io, CTRL_RESUME_STREAM);
+        return -1;
+    }
     return 0;
 }
 
@@ -212,6 +258,9 @@ int VideoOut_GetStatus(const VideoOutIo *io, VideoOutStatus *status)
     state = io->read_reg(io->context, REG_STATUS);
     active_size = io->read_reg(io->context, REG_ACTIVE_SIZE);
     status->busy = (uint8_t)((state >> 4) & 1U);
+    status->enabled = (uint8_t)(state & VIDEO_OUT_STATUS_ENABLED);
+    status->stream_held = (uint8_t)((state & VIDEO_OUT_STATUS_STREAM_HELD) != 0U);
+    status->config_pending = (uint8_t)((state & VIDEO_OUT_STATUS_CONFIG_PENDING) != 0U);
     status->active_source = (state >> 6) & 3U;
     status->active_width = active_size & 0x3ffU;
     status->active_height = (active_size >> 16) & 0x3ffU;

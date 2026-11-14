@@ -7,7 +7,7 @@ EmbeddedVideoIP 按一套 PL+PS 产品交付。PL 侧提供 Vivado IP，PS 侧�
 当前完成实板验证的组合是 Zybo Z7-20、XC7Z020、Zynq-7000、Vivado/Vitis 2025.2.1。其他器件可以复用不含厂商原语的视频流 RTL，但目前没有对应的 PS 适配器和完整板级参考设计，不能视为开箱即用。
 本轮板测覆盖 VDMA MM2S 输入、PS 配置、缩放和 HDMI 输出。HLS 与 BRAM 输入通过 RTL 仿真，尚未完成板上源切换验收。
 
-视频核心接收 BRAM RGB565、HLS AXI4-Stream 或 VDMA MM2S 输入。它输出 RGB888 AXI4-Stream。V1 HDMI 参考输出使用 AMD VDMA、VTC、`v_axi4s_vid_out` 和 Digilent `rgb2dvi`。`rgb2dvi` 依赖 7-series 原语。
+视频核心接收 BRAM RGB565、HLS AXI4-Stream 或 VDMA MM2S 输入。AXI4-Stream Video 的 RGB888 分量按 RBG 打包：`TDATA[23:16]=R`、`TDATA[15:8]=B`、`TDATA[7:0]=G`。核心内部转成 RGB 缩放，再按 AXI4-Stream Video 的 RBG 顺序输出。V1 HDMI 参考输出使用 AMD VDMA、VTC、`v_axi4s_vid_out` 和 Digilent `rgb2dvi`。`rgb2dvi` 依赖 7-series 原语。
 
 ## 构建和验证库
 

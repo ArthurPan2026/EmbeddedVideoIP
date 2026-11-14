@@ -1,0 +1,445 @@
+from __future__ import annotations
+
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+import video_flow
+
+
+class VideoFlowProfileTests(unittest.TestCase):
+    def test_profile_parameter_maps(self) -> None:
+        self.assertEqual(video_flow.synth_profile_generics("generic"), {})
+        gba = video_flow.synth_profile_generics("gba")
+        self.assertEqual(gba["MAX_INPUT_WIDTH"], 640)
+        self.assertEqual(gba["MAX_INPUT_HEIGHT"], 480)
+        self.assertEqual(gba["OUTPUT_WIDTH"], 640)
+        self.assertEqual(gba["OUTPUT_HEIGHT"], 480)
+        self.assertEqual(gba["ENABLE_BRAM_SOURCE"], 0)
+        self.assertEqual(gba["ENABLE_HLS_SOURCE"], 0)
+        self.assertEqual(gba["ENABLE_VDMA_SOURCE"], 1)
+        self.assertEqual(gba["SOURCE_SELECT_MODE"], 1)
+        self.assertEqual(gba["FIXED_SOURCE"], 2)
+        self.assertEqual(gba["FORMAT_SELECT_MODE"], 1)
+        self.assertEqual(gba["FIXED_FORMAT"], 2)
+        self.assertEqual(gba["MAX_SCALER_INPUT_WIDTH"], 240)
+        self.assertEqual(gba["MAX_SCALER_INPUT_HEIGHT"], 160)
+        self.assertEqual(gba["ENABLE_SCALER"], 1)
+
+        passthrough = video_flow.synth_profile_generics("passthrough")
+        self.assertEqual(passthrough["ENABLE_BRAM_SOURCE"], 0)
+        self.assertEqual(passthrough["ENABLE_HLS_SOURCE"], 0)
+        self.assertEqual(passthrough["ENABLE_VDMA_SOURCE"], 1)
+        self.assertEqual(passthrough["SOURCE_SELECT_MODE"], 1)
+        self.assertEqual(passthrough["FIXED_SOURCE"], 2)
+        self.assertEqual(passthrough["FORMAT_SELECT_MODE"], 1)
+        self.assertEqual(passthrough["FIXED_FORMAT"], 2)
+        self.assertEqual(passthrough["OUTPUT_WIDTH"], 640)
+        self.assertEqual(passthrough["OUTPUT_HEIGHT"], 480)
+        self.assertEqual(passthrough["ENABLE_SCALER"], 0)
+        self.assertNotIn("MAX_SCALER_INPUT_WIDTH", passthrough)
+
+        with self.assertRaises(video_flow.FlowError):
+            video_flow.synth_profile_generics("unknown")
+
+    def test_synth_tcl_batches_generic_overrides_as_one_option(self) -> None:
+        synth_tcl = (REPO_ROOT / "tools/synth_core.tcl").read_text(encoding="utf-8")
+        self.assertEqual(synth_tcl.count("lappend synth_command -generic"), 1)
+        self.assertIn("lappend synth_command -generic $generic_values", synth_tcl)
+        self.assertIn("synth_design {*}$synth_command", synth_tcl)
+        self.assertIn('puts "VIDEO_SYNTH_COMMAND: $synth_command"', synth_tcl)
+
+    def test_command_synth_forwards_selected_generics_and_profile_path(self) -> None:
+        vivado = Path("/fake/vivado")
+        args = SimpleNamespace(vivado=str(vivado), part="xc7z020clg400-1", profile="gba")
+        with patch.object(video_flow, "resolve_vivado", return_value=vivado), patch.object(video_flow, "vivado_version", return_value="2025.2.1"), patch.object(video_flow, "input_manifest", return_value={"rtl": "sha"}), patch.object(video_flow, "run_stage") as run_stage:
+            video_flow.command_synth(args)
+
+        command = run_stage.call_args.args[1]
+        self.assertEqual(run_stage.call_args.args[0], "synth")
+        self.assertIn("profiles/gba", command[command.index("-tclargs") + 3])
+        forwarded = set(command[command.index("-tclargs") + 4:])
+        self.assertIn("ENABLE_BRAM_SOURCE=0", forwarded)
+        self.assertIn("ENABLE_HLS_SOURCE=0", forwarded)
+        self.assertIn("ENABLE_VDMA_SOURCE=1", forwarded)
+        self.assertIn("FIXED_SOURCE=2", forwarded)
+        self.assertIn("FIXED_FORMAT=2", forwarded)
+        self.assertIn("MAX_SCALER_INPUT_WIDTH=240", forwarded)
+        self.assertIn("MAX_SCALER_INPUT_HEIGHT=160", forwarded)
+        self.assertIn("ENABLE_SCALER=1", forwarded)
+        self.assertEqual(run_stage.call_args.kwargs["profile"], "gba")
+
+    def test_profiles_use_independent_cache_keys_and_output_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = "xc7z020clg400-1"
+            calls: list[str] = []
+
+            def runner_for(profile: str):
+                def runner(command, cwd, text, capture_output, check, env):
+                    calls.append(profile)
+                    for output in video_flow.stage_output_paths("synth", root, part, profile):
+                        output.parent.mkdir(parents=True, exist_ok=True)
+                        output.write_text(f"{profile}:{output.name}\\n", encoding="utf-8")
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout=f"VIDEO_SYNTH_PASS: profile={profile}\\n",
+                        stderr="",
+                    )
+                return runner
+
+            inputs = {"rtl": "same-inputs"}
+            for profile in ("generic", "gba", "passthrough"):
+                command = ["vivado", "synth_core.tcl", profile]
+                video_flow.run_stage(
+                    "synth", command, Path("/fake/vivado"), inputs, part,
+                    root=root, tool_version="2025.2.1", profile=profile,
+                    runner=runner_for(profile), success_marker="VIDEO_SYNTH_PASS",
+                )
+
+            generic_dir = root / "out/synth" / part
+            gba_dir = root / "out/synth" / part / "profiles/gba"
+            passthrough_dir = root / "out/synth" / part / "profiles/passthrough"
+            generic_before = (generic_dir / "utilization.rpt").read_text(encoding="utf-8")
+            self.assertEqual((gba_dir / "utilization.rpt").read_text(encoding="utf-8"), "gba:utilization.rpt\\n")
+            self.assertEqual(
+                (passthrough_dir / "utilization.rpt").read_text(encoding="utf-8"),
+                "passthrough:utilization.rpt\\n",
+            )
+            self.assertNotEqual(gba_dir, passthrough_dir)
+
+            hit = video_flow.run_stage(
+                "synth", ["vivado", "synth_core.tcl", "gba"], Path("/fake/vivado"),
+                inputs, part, root=root, tool_version="2025.2.1", profile="gba",
+                runner=runner_for("gba"), success_marker="VIDEO_SYNTH_PASS",
+            )
+            self.assertFalse(hit)
+            self.assertEqual(calls, ["generic", "gba", "passthrough"])
+            self.assertEqual((generic_dir / "utilization.rpt").read_text(encoding="utf-8"), generic_before)
+
+            manifest = video_flow.read_manifest(root)
+            self.assertEqual(
+                set(manifest["stages"]),
+                {"synth:generic", "synth:gba", "synth:passthrough"},
+            )
+
+class VideoFlowInputPartitionTests(unittest.TestCase):
+    def make_source_tree(self, root: Path) -> None:
+        files = [
+            "tools/video_flow.py",
+            "tools/package_ip.tcl",
+            "tools/validate_ip_catalog.tcl",
+            "tools/synth_core.tcl",
+            "tools/run_video_tests.sh",
+            "tools/install_ps_library.py",
+            "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv",
+            "ip/video_pipeline_1_0/hdl/axis_rgb888.sv",
+            "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv",
+            "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv",
+            "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv",
+            "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv",
+            "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v",
+            "software/video_out.c",
+            "software/video_out.h",
+            "software/platforms/xilinx_zynq7000/video_out_xilinx.c",
+            "software/platforms/xilinx_zynq7000/video_out_xilinx.h",
+            "software/unrelated_ps.c",
+            "VERSION",
+            "tests/rtl/tb_axis_video_nn_scaler.sv",
+            "tests/rtl/tb_video_bram_rgb565_reader.sv",
+            "tests/rtl/tb_video_pipeline_v1_0.sv",
+            "tests/rtl/tb_video_pipeline_static_profile.sv",
+            "tests/host/test_video_out.c",
+            "tests/host/test_install_ps_library.py",
+            "docs/architecture.md",
+            "README.md",
+        ]
+        for relative in files:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"fixture:{relative}\n", encoding="utf-8")
+
+    def test_synth_inputs_ignore_docs_tests_and_ps_but_track_rtl(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_source_tree(root)
+            before = video_flow.input_manifest("synth", root)
+            selected = set(before)
+            self.assertIn("tools/synth_core.tcl", selected)
+            self.assertIn("ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", selected)
+            self.assertNotIn("docs/architecture.md", selected)
+            self.assertNotIn("tests/rtl/tb_video_pipeline_v1_0.sv", selected)
+            self.assertNotIn("software/video_out.c", selected)
+
+            (root / "docs/architecture.md").write_text("docs changed\n", encoding="utf-8")
+            (root / "tests/rtl/tb_video_pipeline_v1_0.sv").write_text("test changed\n", encoding="utf-8")
+            (root / "software/video_out.c").write_text("PS changed\n", encoding="utf-8")
+            self.assertEqual(video_flow.input_manifest("synth", root), before)
+
+            (root / "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv").write_text(
+                "RTL changed\n", encoding="utf-8"
+            )
+            self.assertNotEqual(video_flow.input_manifest("synth", root), before)
+
+    def test_package_catalog_and_sim_use_separate_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_source_tree(root)
+            package = set(video_flow.input_manifest("package", root))
+            sim = set(video_flow.input_manifest("sim", root))
+
+            self.assertIn("tools/package_ip.tcl", package)
+            self.assertIn("ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v", package)
+            self.assertNotIn("docs/architecture.md", package)
+            self.assertNotIn("software/video_out.c", package)
+            self.assertIn("tests/rtl/tb_video_pipeline_v1_0.sv", sim)
+            self.assertIn("software/video_out.c", sim)
+            self.assertIn("software/platforms/xilinx_zynq7000/video_out_xilinx.c", sim)
+            self.assertIn("VERSION", sim)
+            self.assertNotIn("software/unrelated_ps.c", sim)
+            self.assertIn("tools/run_video_tests.sh", sim)
+            self.assertNotIn("docs/architecture.md", sim)
+
+            packaged_root = root / "ip_repo/panfpga/video_pipeline"
+            (packaged_root / "src").mkdir(parents=True)
+            (packaged_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
+            (packaged_root / "src/video_pipeline_v1_0.sv").write_text("packaged RTL\n", encoding="utf-8")
+            catalog = set(video_flow.input_manifest("ip_catalog", root))
+            self.assertIn("tools/validate_ip_catalog.tcl", catalog)
+            self.assertIn("ip_repo/panfpga/video_pipeline/component.xml", catalog)
+            self.assertIn("ip_repo/panfpga/video_pipeline/src/video_pipeline_v1_0.sv", catalog)
+            self.assertNotIn("tools/package_ip.tcl", catalog)
+            self.assertNotIn("software/video_out.c", catalog)
+            before_catalog = video_flow.input_manifest("ip_catalog", root)
+            (packaged_root / "src/video_pipeline_v1_0.sv").write_text(
+                "packaged RTL changed\\n", encoding="utf-8"
+            )
+            self.assertNotEqual(video_flow.input_manifest("ip_catalog", root), before_catalog)
+
+    def test_package_input_change_does_not_depend_on_documentation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_source_tree(root)
+            before = video_flow.input_manifest("package", root)
+            (root / "docs/architecture.md").write_text("updated\n", encoding="utf-8")
+            self.assertEqual(video_flow.input_manifest("package", root), before)
+
+
+class VideoFlowCacheTests(unittest.TestCase):
+    def make_synth_runner(self, calls: list[list[str]]):
+        def runner(command, cwd, text, capture_output, check, env):
+            calls.append(command)
+            output_dir = Path(cwd) / "synth/xc7z020clg400-1"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "utilization.rpt").write_text("LUT 100\n", encoding="utf-8")
+            (output_dir / "timing_summary.rpt").write_text("WNS 1.0\n", encoding="utf-8")
+            (output_dir / "video_pipeline.dcp").write_bytes(b"dcp-content")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="VIDEO_SYNTH_PASS: part=xc7z020clg400-1\n",
+                stderr="",
+            )
+        return runner
+
+    def test_matching_inputs_and_all_output_hashes_skip_stage_command(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls: list[list[str]] = []
+            runner = Mock(side_effect=self.make_synth_runner(calls))
+            inputs = {"ip/video_pipeline_1_0/hdl/core.sv": "abc"}
+
+            executed = video_flow.run_stage(
+                "synth", ["vivado", "synth_core.tcl"], Path("/fake/vivado"),
+                inputs, "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            self.assertTrue(executed)
+            self.assertEqual(runner.call_count, 1)
+
+            executed = video_flow.run_stage(
+                "synth", ["vivado", "synth_core.tcl"], Path("/fake/vivado"),
+                inputs, "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            self.assertFalse(executed)
+            self.assertEqual(runner.call_count, 1)
+
+    def test_package_cache_hashes_component_and_imported_hdl(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls: list[list[str]] = []
+
+            def runner(command, cwd, text, capture_output, check, env):
+                calls.append(command)
+                package_root = root / "ip_repo/panfpga/video_pipeline"
+                (package_root / "src").mkdir(parents=True, exist_ok=True)
+                (package_root / "component.xml").write_text("<component/>\\n", encoding="utf-8")
+                (package_root / "src/video_pipeline_v1_0.sv").write_text(
+                    "module video_pipeline; endmodule\\n", encoding="utf-8"
+                )
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="VIDEO_IP_PACKAGE_PASS\\n",
+                    stderr="",
+                )
+
+            command = ["vivado", "package_ip.tcl"]
+            inputs = {"package_sources": "v1"}
+            video_flow.run_stage(
+                "package", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_IP_PACKAGE_PASS",
+            )
+            self.assertFalse(video_flow.run_stage(
+                "package", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_IP_PACKAGE_PASS",
+            ))
+            self.assertEqual(len(calls), 1)
+
+            (root / "ip_repo/panfpga/video_pipeline/src/video_pipeline_v1_0.sv").write_text(
+                "tampered\\n", encoding="utf-8"
+            )
+            self.assertTrue(video_flow.run_stage(
+                "package", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_IP_PACKAGE_PASS",
+            ))
+            self.assertEqual(len(calls), 2)
+
+    def test_input_change_or_output_tampering_forces_stage_command(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls: list[list[str]] = []
+            runner = Mock(side_effect=self.make_synth_runner(calls))
+            command = ["vivado", "synth_core.tcl"]
+
+            video_flow.run_stage(
+                "synth", command, Path("/fake/vivado"), {"rtl": "v1"},
+                "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            video_flow.run_stage(
+                "synth", command, Path("/fake/vivado"), {"rtl": "v2"},
+                "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            self.assertEqual(runner.call_count, 2)
+
+            report = root / "out/synth/xc7z020clg400-1/timing_summary.rpt"
+            report.write_text("tampered\n", encoding="utf-8")
+            video_flow.run_stage(
+                "synth", command, Path("/fake/vivado"), {"rtl": "v2"},
+                "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            self.assertEqual(runner.call_count, 3)
+
+    def test_catalog_cache_requires_validation_bd_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls: list[list[str]] = []
+            bd_path = root / video_flow.CATALOG_BD_REL
+
+            def runner(command, cwd, text, capture_output, check, env):
+                calls.append(command)
+                bd_path.parent.mkdir(parents=True, exist_ok=True)
+                bd_path.write_text("validated BD\\n", encoding="utf-8")
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="VIDEO_IP_CATALOG_PASS\\n",
+                    stderr="",
+                )
+
+            command = ["vivado", "validate_ip_catalog.tcl"]
+            inputs = {"packaged_ip_sha": "v1"}
+            video_flow.run_stage(
+                "ip_catalog", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_IP_CATALOG_PASS",
+            )
+            self.assertFalse(video_flow.run_stage(
+                "ip_catalog", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_IP_CATALOG_PASS",
+            ))
+            self.assertEqual(len(calls), 1)
+
+            bd_path.write_text("tampered\\n", encoding="utf-8")
+            self.assertTrue(video_flow.run_stage(
+                "ip_catalog", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_IP_CATALOG_PASS",
+            ))
+            self.assertEqual(len(calls), 2)
+
+    def test_sim_cache_checks_each_rtl_run_log(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls: list[list[str]] = []
+
+            def runner(command, cwd, text, capture_output, check, env):
+                calls.append(command)
+                output_root = Path(cwd) / "tests"
+                for relative in video_flow.SIM_TEST_LOG_RELS:
+                    path = Path(cwd).parent / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("TEST_PASS: fixture\\n", encoding="utf-8")
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="VIDEO_TESTS_PASS\\n",
+                    stderr="",
+                )
+
+            command = ["run_video_tests.sh"]
+            inputs = {"rtl_and_host_tests": "v1"}
+            video_flow.run_stage(
+                "sim", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_TESTS_PASS",
+            )
+            self.assertFalse(video_flow.run_stage(
+                "sim", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_TESTS_PASS",
+            ))
+            self.assertEqual(len(calls), 1)
+
+            altered = root / video_flow.SIM_TEST_LOG_RELS[0]
+            altered.write_text("tampered\\n", encoding="utf-8")
+            self.assertTrue(video_flow.run_stage(
+                "sim", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_TESTS_PASS",
+            ))
+            self.assertEqual(len(calls), 2)
+
+    def test_missing_required_output_prevents_cache_hit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls: list[list[str]] = []
+            runner = Mock(side_effect=self.make_synth_runner(calls))
+            command = ["vivado", "synth_core.tcl"]
+            inputs = {"rtl": "v1"}
+
+            video_flow.run_stage(
+                "synth", command, Path("/fake/vivado"), inputs,
+                "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            (root / "out/synth/xc7z020clg400-1/video_pipeline.dcp").unlink()
+            video_flow.run_stage(
+                "synth", command, Path("/fake/vivado"), inputs,
+                "xc7z020clg400-1", root=root, tool_version="2025.2.1",
+                runner=runner, success_marker="VIDEO_SYNTH_PASS",
+            )
+            self.assertEqual(runner.call_count, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

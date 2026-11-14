@@ -1,7 +1,13 @@
-if {$argc < 2} { error "Usage: validate_ip_catalog.tcl REPO_ROOT IP_REPO" }
+if {$argc < 2 || $argc > 3} { error "Usage: validate_ip_catalog.tcl REPO_ROOT IP_REPO ?OUTPUT_DIR?" }
 set repo_root [file normalize [lindex $argv 0]]
 set ip_repo [file normalize [lindex $argv 1]]
-create_project -force video_ip_validation [file join $repo_root out ip_catalog_validation] -part xc7z020clg400-1
+if {$argc == 3} {
+  set validation_dir [file normalize [lindex $argv 2]]
+} else {
+  set validation_dir [file join $repo_root out ip_catalog_validation]
+}
+file mkdir [file dirname $validation_dir]
+create_project -force video_ip_validation $validation_dir -part xc7z020clg400-1
 set_property ip_repo_paths [list $ip_repo] [current_project]
 update_ip_catalog
 set definitions [get_ipdefs -all panfpga.org:video:video_pipeline:1.0]
@@ -30,6 +36,24 @@ if {[llength $register_segment] > 0} {
   if {[llength $register_space] > 0} {
     exclude_bd_addr_seg -target_address_space $register_space $register_segment
   }
+}
+validate_bd_design
+# Re-customize the same catalog instance with the concrete GBA static profile.
+set_property -dict [list \
+  CONFIG.ENABLE_BRAM_SOURCE {0} \
+  CONFIG.ENABLE_HLS_SOURCE {0} \
+  CONFIG.ENABLE_VDMA_SOURCE {1} \
+  CONFIG.SOURCE_SELECT_MODE {1} \
+  CONFIG.FIXED_SOURCE {2} \
+  CONFIG.FORMAT_SELECT_MODE {1} \
+  CONFIG.FIXED_FORMAT {2} \
+  CONFIG.MAX_SCALER_INPUT_WIDTH {240} \
+  CONFIG.MAX_SCALER_INPUT_HEIGHT {160} \
+  CONFIG.ENABLE_SCALER {1} \
+] [get_bd_cells video_pipeline_0]
+if {[get_property CONFIG.MAX_SCALER_INPUT_WIDTH [get_bd_cells video_pipeline_0]] != 240 ||
+    [get_property CONFIG.MAX_SCALER_INPUT_HEIGHT [get_bd_cells video_pipeline_0]] != 160} {
+  error "IP catalog did not retain GBA scaler buffer limits"
 }
 validate_bd_design
 save_bd_design

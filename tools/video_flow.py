@@ -11,13 +11,93 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "out"
 MANIFEST = OUT / "manifest.json"
+MANIFEST_SCHEMA_VERSION = 1
+INPUT_PARTITION_VERSION = 2
 LOCK = json.loads((ROOT / "dependencies.lock.json").read_text(encoding="utf-8"))
 DEFAULT_VIVADO = Path("/tools/AMDDesignTools/2025.2.1/Vivado/bin/vivado")
+
+PACKAGE_HDL_FILES = (
+    "axis_video_nn_scaler.sv",
+    "axis_rgb888.sv",
+    "axis_video_mux3.sv",
+    "video_bram_rgb565_reader.sv",
+    "axi_lite_video_regs.sv",
+    "video_pipeline_v1_0.sv",
+    "video_pipeline_v1_0_wrapper.v",
+)
+SYNTH_HDL_FILES = (
+    "axis_video_nn_scaler.sv",
+    "axis_rgb888.sv",
+    "axis_video_mux3.sv",
+    "video_bram_rgb565_reader.sv",
+    "axi_lite_video_regs.sv",
+    "video_pipeline_v1_0.sv",
+)
+SIM_HDL_FILES = SYNTH_HDL_FILES
+SIM_RTL_TEST_FILES = (
+    "tb_axis_video_nn_scaler.sv",
+    "tb_video_bram_rgb565_reader.sv",
+    "tb_video_pipeline_v1_0.sv",
+    "tb_video_pipeline_static_profile.sv",
+)
+SIM_SOFTWARE_FILES = (
+    "video_out.c",
+    "video_out.h",
+    "platforms/xilinx_zynq7000/video_out_xilinx.c",
+    "platforms/xilinx_zynq7000/video_out_xilinx.h",
+)
+CATALOG_BD_REL = Path(
+    "out/ip_catalog_validation_feature_profile/video_ip_validation.srcs/sources_1/bd/"
+    "video_pipeline_ip_validation/video_pipeline_ip_validation.bd"
+)
+SIM_LOG_REL = Path("out/tests/video-tests.log")
+SIM_TEST_LOG_RELS = (
+    Path("out/tests/tb_axis_video_nn_scaler/run.log"),
+    Path("out/tests/tb_video_bram_rgb565_reader/run.log"),
+    Path("out/tests/tb_video_pipeline_v1_0/run.log"),
+    Path("out/tests/tb_video_pipeline_static_profile/run.log"),
+)
+SYNTH_OUTPUT_NAMES = ("utilization.rpt", "timing_summary.rpt", "video_pipeline.dcp")
+SYNTH_PROFILE_GENERICS: dict[str, dict[str, int]] = {
+    "generic": {},
+    "gba": {
+        "MAX_INPUT_WIDTH": 640,
+        "MAX_INPUT_HEIGHT": 480,
+        "OUTPUT_WIDTH": 640,
+        "OUTPUT_HEIGHT": 480,
+        "ENABLE_BRAM_SOURCE": 0,
+        "ENABLE_HLS_SOURCE": 0,
+        "ENABLE_VDMA_SOURCE": 1,
+        "SOURCE_SELECT_MODE": 1,
+        "FIXED_SOURCE": 2,
+        "FORMAT_SELECT_MODE": 1,
+        "FIXED_FORMAT": 2,
+        "MAX_SCALER_INPUT_WIDTH": 240,
+        "MAX_SCALER_INPUT_HEIGHT": 160,
+        "ENABLE_SCALER": 1,
+    },
+    "passthrough": {
+        "MAX_INPUT_WIDTH": 640,
+        "MAX_INPUT_HEIGHT": 480,
+        "OUTPUT_WIDTH": 640,
+        "OUTPUT_HEIGHT": 480,
+        "ENABLE_BRAM_SOURCE": 0,
+        "ENABLE_HLS_SOURCE": 0,
+        "ENABLE_VDMA_SOURCE": 1,
+        "SOURCE_SELECT_MODE": 1,
+        "FIXED_SOURCE": 2,
+        "FORMAT_SELECT_MODE": 1,
+        "FIXED_FORMAT": 2,
+        "ENABLE_SCALER": 0,
+    },
+}
+IGNORED_DIRS = {".git", ".Xil", "__pycache__", ".cache", "out"}
+IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
 
 class FlowError(RuntimeError):
@@ -36,50 +116,146 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def source_files() -> list[Path]:
+def sha256_json(value: object) -> str:
+    data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _tree_files(base: Path) -> list[Path]:
+    """Return deterministic regular files below a source/package directory."""
+    if base.is_file() and not base.is_symlink():
+        return [base]
+    if not base.is_dir():
+        return []
     result: list[Path] = []
-    for base in (ROOT / "ip", ROOT / "software", ROOT / "platforms",
-                 ROOT / "tools", ROOT / "tests", ROOT / "docs"):
-        if not base.exists():
-            continue
-        for path in base.rglob("*"):
-            if path.is_file() and "out" not in path.parts and ".git" not in path.parts:
+    for current, directories, names in os.walk(base, followlinks=False):
+        current_path = Path(current)
+        directories[:] = sorted(
+            name for name in directories
+            if name not in IGNORED_DIRS and not (current_path / name).is_symlink()
+        )
+        for name in sorted(names):
+            path = current_path / name
+            if (path.is_file() and not path.is_symlink()
+                    and path.suffix.lower() not in IGNORED_SUFFIXES):
                 result.append(path)
-    result.extend([ROOT / "README.md", ROOT / "NOTICE.md", ROOT / "VERSION",
-                    ROOT / "dependencies.lock.json"])
-    return sorted(set(result))
+    return sorted(result, key=lambda path: path.as_posix())
 
 
-def input_manifest() -> dict[str, str]:
-    return {p.relative_to(ROOT).as_posix(): sha256_file(p) for p in source_files()}
+def _require_files(paths: Iterable[Path], stage: str) -> list[Path]:
+    result = sorted(set(paths), key=lambda path: path.as_posix())
+    missing = [path for path in result if not path.is_file() or path.is_symlink()]
+    if missing:
+        shown = ", ".join(str(path) for path in missing[:5])
+        raise FlowError(f"Missing {stage} input(s): {shown}")
+    return result
+
+
+def stage_input_paths(stage: str, root: Path = ROOT) -> list[Path]:
+    """Select only files that can affect one flow stage."""
+    hdl_dir = root / "ip/video_pipeline_1_0/hdl"
+    common = [root / "tools/video_flow.py"]
+
+    if stage == "package":
+        paths = [
+            *common,
+            root / "tools/package_ip.tcl",
+            *(hdl_dir / name for name in PACKAGE_HDL_FILES),
+        ]
+    elif stage == "ip_catalog":
+        package_root = root / "ip_repo/panfpga/video_pipeline"
+        package_files = _tree_files(package_root)
+        if not (package_root / "component.xml").is_file():
+            raise FlowError(f"Packaged IP is missing; run the package stage first: {package_root}")
+        paths = [*common, root / "tools/validate_ip_catalog.tcl", *package_files]
+    elif stage == "sim":
+        paths = [
+            *common,
+            root / "tools/run_video_tests.sh",
+            root / "tools/install_ps_library.py",
+            root / "tests/host/test_video_out.c",
+            root / "tests/host/test_install_ps_library.py",
+            root / "VERSION",
+            *(hdl_dir / name for name in SIM_HDL_FILES),
+            *(root / "tests/rtl" / name for name in SIM_RTL_TEST_FILES),
+            *(root / "software" / name for name in SIM_SOFTWARE_FILES),
+        ]
+    elif stage == "synth":
+        paths = [
+            *common,
+            root / "tools/synth_core.tcl",
+            *(hdl_dir / name for name in SYNTH_HDL_FILES),
+        ]
+    else:
+        raise FlowError(f"Unknown stage input partition: {stage!r}")
+
+    return _require_files(paths, stage)
+
+
+def input_manifest(stage: str, root: Path = ROOT) -> dict[str, str]:
+    """Hash the stage's exact source inputs, excluding unrelated docs/tests/PS as appropriate."""
+    paths = stage_input_paths(stage, root)
+    return {
+        path.relative_to(root).as_posix(): sha256_file(path)
+        for path in paths
+    }
+
+
+def synth_profile_generics(profile: str) -> dict[str, int]:
+    try:
+        return dict(SYNTH_PROFILE_GENERICS[profile])
+    except KeyError as exc:
+        raise FlowError(f"Unknown synthesis profile: {profile!r}") from exc
+
+
+def synth_profile_output_dir(part: str, profile: str, root: Path = ROOT) -> Path:
+    synth_profile_generics(profile)
+    base = root / "out/synth" / part
+    return base if profile == "generic" else base / "profiles" / profile
+
+
+def stage_manifest_key(name: str, profile: str | None = None) -> str:
+    if name == "synth":
+        return f"synth:{profile or 'generic'}"
+    return name
 
 
 def fingerprint(inputs: dict[str, str], vivado_version: str, action: str,
-                part: str | None = None) -> str:
-    data = {"schema_version": 1, "action": action, "part": part,
-            "vivado_version": vivado_version, "inputs": inputs, "lock": LOCK}
-    return hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                part: str | None = None, profile: str | None = None) -> str:
+    data = {
+        "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
+        "input_partition_version": INPUT_PARTITION_VERSION,
+        "action": action,
+        "part": part,
+        "profile": profile,
+        "vivado_version": vivado_version,
+        "vivado_required": str(LOCK["vivado"]),
+        "inputs": inputs,
+    }
+    return sha256_json(data)
 
 
-def read_manifest() -> dict[str, Any]:
-    if not MANIFEST.is_file():
-        return {"schema_version": 1, "stages": {}}
+def read_manifest(root: Path = ROOT) -> dict[str, Any]:
+    manifest = root / "out/manifest.json"
+    if not manifest.is_file():
+        return {"schema_version": MANIFEST_SCHEMA_VERSION, "stages": {}}
     try:
-        data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        data = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise FlowError(f"Cannot read flow manifest: {exc}") from exc
-    if not isinstance(data.get("stages"), dict):
+    if not isinstance(data, dict) or not isinstance(data.get("stages"), dict):
         raise FlowError("Invalid flow manifest: stages must be a mapping.")
     return data
 
 
-def write_manifest(data: dict[str, Any]) -> None:
-    OUT.mkdir(parents=True, exist_ok=True)
-    data["schema_version"] = 1
+def write_manifest(data: dict[str, Any], root: Path = ROOT) -> None:
+    manifest = root / "out/manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    data["schema_version"] = MANIFEST_SCHEMA_VERSION
     data["generated_at_utc"] = now()
-    temp = MANIFEST.with_suffix(".tmp")
+    temp = manifest.with_suffix(".tmp")
     temp.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    temp.replace(MANIFEST)
+    temp.replace(manifest)
 
 
 def resolve_vivado(text: str | None) -> Path:
@@ -102,95 +278,210 @@ def vivado_version(vivado: Path) -> str:
     return match.group(1)
 
 
+def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
+                       profile: str | None = None) -> list[Path]:
+    if name == "package":
+        package_root = root / "ip_repo/panfpga/video_pipeline"
+        paths = _tree_files(package_root)
+        if not (package_root / "component.xml").is_file():
+            raise FlowError(f"Packaged IP component.xml is missing: {package_root / 'component.xml'}")
+        if not any(path.suffix.lower() in {".sv", ".v"} for path in paths):
+            raise FlowError(f"Packaged IP has no HDL outputs: {package_root}")
+        return paths
+    if name == "ip_catalog":
+        return [root / CATALOG_BD_REL]
+    if name == "sim":
+        return [root / SIM_LOG_REL, *(root / path for path in SIM_TEST_LOG_RELS)]
+    if name == "synth":
+        if not part:
+            raise FlowError("Synthesis output validation requires a part.")
+        selected_profile = profile or "generic"
+        output_dir = synth_profile_output_dir(part, selected_profile, root)
+        return [output_dir / output for output in SYNTH_OUTPUT_NAMES]
+    raise FlowError(f"Unknown stage output partition: {name!r}")
+
+
+def output_manifest(name: str, root: Path = ROOT, part: str | None = None,
+                    profile: str | None = None) -> list[dict[str, str]]:
+    paths = stage_output_paths(name, root, part, profile)
+    missing = [path for path in paths if not path.is_file() or path.is_symlink()]
+    if missing:
+        shown = ", ".join(str(path) for path in missing)
+        raise FlowError(f"Stage {name} did not produce required output(s): {shown}")
+    return [
+        {"path": path.relative_to(root).as_posix(), "sha256": sha256_file(path)}
+        for path in sorted(paths, key=lambda path: path.as_posix())
+    ]
+
+
+def output_fingerprint(outputs: list[dict[str, str]]) -> str:
+    return sha256_json(outputs)
+
+
+def outputs_match(name: str, record: Mapping[str, Any], root: Path = ROOT,
+                  part: str | None = None, profile: str | None = None) -> bool:
+    recorded = record.get("outputs")
+    recorded_fingerprint = record.get("output_sha256")
+    if not isinstance(recorded, list) or not recorded or not isinstance(recorded_fingerprint, str):
+        return False
+    try:
+        current = output_manifest(name, root, part, profile)
+    except (FlowError, OSError, ValueError):
+        return False
+    return current == recorded and output_fingerprint(current) == recorded_fingerprint
+
+
+def stage_cache_valid(name: str, record: Mapping[str, Any], input_hash: str,
+                      vivado_version_text: str, root: Path = ROOT,
+                      part: str | None = None, profile: str | None = None) -> bool:
+    return (
+        record.get("status") == "succeeded"
+        and record.get("input_partition_version") == INPUT_PARTITION_VERSION
+        and record.get("input_sha256") == input_hash
+        and record.get("vivado_version") == vivado_version_text
+        and record.get("part") == part
+        and record.get("profile") == profile
+        and outputs_match(name, record, root, part, profile)
+    )
+
+
 def run_stage(name: str, command: list[str], vivado: Path,
-              inputs: dict[str, str], part: str | None = None) -> None:
-    version = vivado_version(vivado)
+              inputs: dict[str, str], part: str | None = None, *,
+              root: Path = ROOT, tool_version: str | None = None,
+              profile: str | None = None,
+              runner: Callable[..., Any] | None = None,
+              env: dict[str, str] | None = None,
+              success_marker: str | None = None) -> bool:
+    """Run a stage only when its input fingerprint or required output hashes are stale.
+
+    Returns True when the stage command ran, False on a verified cache hit.
+    """
+    if name == "synth":
+        profile = profile or "generic"
+        synth_profile_generics(profile)
+    elif profile is not None:
+        raise FlowError(f"Profiles are only supported for synthesis, not {name!r}.")
+
+    stage_key = stage_manifest_key(name, profile)
+    version = tool_version if tool_version is not None else vivado_version(vivado)
     required = str(LOCK["vivado"])
     if version != required:
         raise FlowError(f"Vivado {required} is required by dependencies.lock.json; found {version}.")
-    input_hash = fingerprint(inputs, version, name, part)
-    log_dir = OUT / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log = log_dir / f"{name}.log"
-    proc = subprocess.run(command, cwd=OUT, text=True, capture_output=True, check=False)
-    log.write_text(proc.stdout + proc.stderr, encoding="utf-8", errors="replace")
-    print(proc.stdout, end="")
-    if proc.stderr:
-        print(proc.stderr, end="", file=sys.stderr)
-    if proc.returncode:
-        raise FlowError(f"Stage {name} failed ({proc.returncode}); see {log}.")
+    input_hash = fingerprint(inputs, version, name, part, profile)
+    data = read_manifest(root)
+    stages = data.setdefault("stages", {})
+    if not isinstance(stages, dict):
+        stages = {}
+        data["stages"] = stages
 
-    data = read_manifest()
-    output_map = {
-        "package": [ROOT / "ip_repo/panfpga/video_pipeline/component.xml"],
-        "ip_catalog": [OUT / "ip_catalog_validation/video_ip_validation.srcs/sources_1/bd/video_pipeline_ip_validation/video_pipeline_ip_validation.bd"],
-        "synth": [OUT / "synth" / (part or "") / name for name in
-                  ("utilization.rpt", "timing_summary.rpt", "video_pipeline.dcp")],
+    previous = stages.get(stage_key)
+    if isinstance(previous, dict) and stage_cache_valid(
+            name, previous, input_hash, version, root, part, profile):
+        print(f"VIDEO_FLOW_CACHE_HIT: {stage_key}")
+        return False
+
+    out_root = root / "out"
+    log_dir = out_root / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_name = name if profile is None else f"{name}-{profile}"
+    log = log_dir / f"{log_name}.log"
+    process = (runner or subprocess.run)(
+        command, cwd=out_root, text=True, capture_output=True, check=False, env=env
+    )
+    stdout = process.stdout or ""
+    stderr = process.stderr or ""
+    output = stdout + stderr
+    log.write_text(output, encoding="utf-8", errors="replace")
+    print(stdout, end="")
+    if stderr:
+        print(stderr, end="", file=sys.stderr)
+    if process.returncode:
+        raise FlowError(f"Stage {name} failed ({process.returncode}); see {log}.")
+    if success_marker is not None and success_marker not in output:
+        raise FlowError(f"Stage {name} returned success without {success_marker}; see {log}.")
+
+    if name == "sim":
+        sim_log = root / SIM_LOG_REL
+        sim_log.parent.mkdir(parents=True, exist_ok=True)
+        sim_log.write_text(output, encoding="utf-8", errors="replace")
+
+    outputs = output_manifest(name, root, part, profile)
+    stages[stage_key] = {
+        "status": "succeeded",
+        "stage": name,
+        "profile": profile,
+        "input_partition_version": INPUT_PARTITION_VERSION,
+        "completed_at_utc": now(),
+        "input_sha256": input_hash,
+        "inputs": inputs,
+        "vivado_version": version,
+        "part": part,
+        "command": command,
+        "log": log.relative_to(root).as_posix(),
+        "outputs": outputs,
+        "output_sha256": output_fingerprint(outputs),
     }
-    output_files = []
-    for path in output_map.get(name, []):
-        if path.is_file():
-            output_files.append({"path": path.relative_to(ROOT).as_posix(), "sha256": sha256_file(path)})
-    data.setdefault("stages", {})[name] = {
-        "status": "succeeded", "completed_at_utc": now(),
-        "input_sha256": input_hash, "inputs": inputs,
-        "vivado_version": version, "part": part,
-        "command": command, "log": log.relative_to(ROOT).as_posix(),
-        "outputs": output_files,
-    }
-    write_manifest(data)
-    print(f"VIDEO_FLOW_STAGE_PASS: {name}")
+    write_manifest(data, root)
+    print(f"VIDEO_FLOW_STAGE_PASS: {stage_key}")
+    return True
 
 
 def command_sim(_: argparse.Namespace) -> None:
+    vivado = resolve_vivado(None)
+    version = vivado_version(vivado)
     script = ROOT / "tools/run_video_tests.sh"
     env = os.environ.copy()
-    env["VIVADO_BIN"] = str(resolve_vivado(None).parent)
-    proc = subprocess.run([str(script)], cwd=ROOT, env=env, text=True, capture_output=True, check=False)
-    print(proc.stdout, end="")
-    if proc.stderr:
-        print(proc.stderr, end="", file=sys.stderr)
-    if proc.returncode:
-        raise FlowError("Video simulation or host driver tests failed.")
-    data = read_manifest()
-    sim_log = OUT / "tests/video-tests.log"
-    sim_log.parent.mkdir(parents=True, exist_ok=True)
-    sim_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
-    inputs = input_manifest()
-    version = vivado_version(resolve_vivado(None))
-    data = read_manifest()
-    data.setdefault("stages", {})["sim"] = {
-        "status": "succeeded", "completed_at_utc": now(),
-        "input_sha256": fingerprint(inputs, version, "sim"),
-        "inputs": inputs, "vivado_version": version,
-        "log": "out/tests/video-tests.log",
-        "outputs": [{"path": sim_log.relative_to(ROOT).as_posix(),
-                     "sha256": sha256_file(sim_log)}],
-    }
-    write_manifest(data)
+    env["VIVADO_BIN"] = str(vivado.parent)
+    inputs = input_manifest("sim")
+    run_stage(
+        "sim", [str(script)], vivado, inputs, tool_version=version,
+        env=env, success_marker="VIDEO_TESTS_PASS",
+    )
 
 
 def command_package(args: argparse.Namespace, validate: bool = False) -> None:
     vivado = resolve_vivado(args.vivado)
     version = vivado_version(vivado)
-    inputs = input_manifest()
-    package = [str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/package_ip.tcl"),
-               "-tclargs", str(ROOT), str(ROOT / "ip_repo")]
-    run_stage("package", package, vivado, inputs)
+    package = [
+        str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/package_ip.tcl"),
+        "-tclargs", str(ROOT), str(ROOT / "ip_repo"),
+    ]
+    package_env = os.environ.copy()
+    package_env["VIDEO_IP_PACKAGE_WORK_DIR"] = str(ROOT / "out/package_project_static_profile")
+    run_stage(
+        "package", package, vivado, input_manifest("package"),
+        tool_version=version, env=package_env, success_marker="VIDEO_IP_PACKAGE_PASS",
+    )
     if validate:
-        validation = [str(vivado), "-mode", "batch",
-                      "-source", str(ROOT / "tools/validate_ip_catalog.tcl"),
-                      "-tclargs", str(ROOT), str(ROOT / "ip_repo")]
-        run_stage("ip_catalog", validation, vivado, input_manifest())
+        validation = [
+            str(vivado), "-mode", "batch",
+            "-source", str(ROOT / "tools/validate_ip_catalog.tcl"),
+            "-tclargs", str(ROOT), str(ROOT / "ip_repo"),
+            str(ROOT / "out/ip_catalog_validation_feature_profile"),
+        ]
+        run_stage(
+            "ip_catalog", validation, vivado, input_manifest("ip_catalog"),
+            tool_version=version, success_marker="VIDEO_IP_CATALOG_PASS",
+        )
 
 
 def command_synth(args: argparse.Namespace) -> None:
     vivado = resolve_vivado(args.vivado)
+    version = vivado_version(vivado)
     part = args.part
-    inputs = input_manifest()
-    command = [str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/synth_core.tcl"),
-               "-tclargs", str(ROOT), part, str(OUT / "synth" / part)]
-    run_stage("synth", command, vivado, inputs, part)
+    profile = getattr(args, "profile", "generic")
+    generics = synth_profile_generics(profile)
+    output_dir = synth_profile_output_dir(part, profile)
+    generic_args = [f"{name}={value}" for name, value in generics.items()]
+    command = [
+        str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/synth_core.tcl"),
+        "-tclargs", str(ROOT), part, str(output_dir), profile, *generic_args,
+    ]
+    run_stage(
+        "synth", command, vivado, input_manifest("synth"),
+        part, tool_version=version, profile=profile,
+        success_marker="VIDEO_SYNTH_PASS",
+    )
 
 
 def command_status(_: argparse.Namespace) -> None:
@@ -199,21 +490,35 @@ def command_status(_: argparse.Namespace) -> None:
     if not stages:
         print("No completed stages.")
         return
-    current = input_manifest()
-    for name, record in sorted(stages.items()):
-        action = "sim" if name == "sim" else name
+    try:
+        version = vivado_version(resolve_vivado(None))
+    except FlowError:
+        version = ""
+    for stage_key, record in sorted(stages.items()):
+        if not isinstance(record, dict):
+            print(f"{stage_key}: stale (invalid stage record)")
+            continue
+        stage = str(record.get("stage") or stage_key.split(":", 1)[0])
+        part = record.get("part")
+        profile = record.get("profile")
+        if stage == "synth":
+            profile = str(profile or (stage_key.split(":", 1)[1] if ":" in stage_key else "generic"))
+            try:
+                synth_profile_generics(profile)
+            except FlowError:
+                print(f"{stage_key}: stale (unknown profile)")
+                continue
         try:
-            version = vivado_version(resolve_vivado(None))
-            expected = fingerprint(current, version, action, record.get("part"))
-        except FlowError:
-            expected = ""
-        outputs_ok = all(
-            (ROOT / item.get("path", "")).is_file() and
-            sha256_file(ROOT / item["path"]) == item.get("sha256")
-            for item in record.get("outputs", [])
-        )
-        state = "fresh" if record.get("input_sha256") == expected and record.get("status") == "succeeded" and outputs_ok else "stale"
-        print(f"{name}: {state} (Vivado {record.get('vivado_version')}, part {record.get('part')})")
+            current = input_manifest(stage, ROOT)
+            expected = fingerprint(current, version, stage, part, profile)
+            state = (
+                "fresh" if version and stage_cache_valid(
+                    stage, record, expected, version, ROOT, part, profile
+                ) else "stale"
+            )
+        except (FlowError, OSError, ValueError):
+            state = "stale"
+        print(f"{stage_key}: {state} (Vivado {record.get('vivado_version')}, part {part}, profile {profile})")
 
 
 def main() -> int:
@@ -221,7 +526,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("doctor")
     p.add_argument("--vivado")
-    p = sub.add_parser("sim")
+    sub.add_parser("sim")
     p = sub.add_parser("package")
     p.add_argument("--vivado")
     p = sub.add_parser("validate")
@@ -229,9 +534,11 @@ def main() -> int:
     p = sub.add_parser("synth")
     p.add_argument("--vivado")
     p.add_argument("--part", default="xc7z020clg400-1")
+    p.add_argument("--profile", choices=tuple(SYNTH_PROFILE_GENERICS), default="generic")
     p = sub.add_parser("build")
     p.add_argument("--vivado")
     p.add_argument("--part", default="xc7z020clg400-1")
+    p.add_argument("--profile", choices=tuple(SYNTH_PROFILE_GENERICS), default="generic")
     sub.add_parser("status")
     args = parser.parse_args()
 
@@ -253,7 +560,7 @@ def main() -> int:
         elif args.command == "build":
             command_sim(args)
             command_package(args, validate=True)
-            synth_args = argparse.Namespace(vivado=args.vivado, part=args.part)
+            synth_args = argparse.Namespace(vivado=args.vivado, part=args.part, profile=args.profile)
             command_synth(synth_args)
         elif args.command == "status":
             command_status(args)

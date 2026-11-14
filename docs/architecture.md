@@ -4,7 +4,7 @@
 
 Every stream beat is one pixel. TUSER[0] marks the first pixel of a frame; TLAST marks the last pixel of a line. The producer must hold TDATA and sideband signals stable while TVALID is high and TREADY is low. The processing core preserves frame and line boundaries and reasserts them after scaling.
 
-The internal pixel is RGB888 in TDATA[23:0] = {R,G,B}. The source format adapter accepts RGB565, RGB888 in the low 24 bits, XRGB8888, or BGRX8888. X/padding bytes are ignored.
+The scaler uses internal RGB888 values. The AXI4-Stream Video source format `RGB888` follows AMD packing: TDATA[23:16]=R, [15:8]=B, [7:0]=G. The source adapter converts that to internal RGB. XRGB8888 and BGRX8888 are 32-bit containers; X/padding bytes are ignored. The output converts internal RGB back to standard AXI4-Stream Video RBG packing.
 
 ## Sources
 

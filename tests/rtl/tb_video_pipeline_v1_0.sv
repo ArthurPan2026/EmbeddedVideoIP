@@ -135,19 +135,29 @@ module tb_video_pipeline_v1_0;
 
   task automatic send_hls_frame;
     begin
-      send_hls_pixel(24'h000001,1,0);
-      send_hls_pixel(24'h000002,0,1);
-      send_hls_pixel(24'h000003,0,0);
-      send_hls_pixel(24'h000004,0,1);
+      send_hls_pixel(24'hFF0000,1,0); // red in RBG stream order
+      send_hls_pixel(24'h0000FF,0,1); // green in RBG stream order
+      send_hls_pixel(24'h00FF00,0,0); // blue in RBG stream order
+      send_hls_pixel(24'hFFFFFF,0,1);
+    end
+  endtask
+
+  task automatic send_xrgb_vdma_frame;
+    begin
+      // XRGB memory pixels are numeric 0x00RRGGBB; output AXI video must be RBG.
+      send_pixel(24'h112233,1,0);
+      send_pixel(24'h445566,0,1);
+      send_pixel(24'h778899,0,0);
+      send_pixel(24'hAABBCC,0,1);
     end
   endtask
 
   task automatic send_frame;
     begin
-      send_pixel(24'h000001,1,0);
-      send_pixel(24'h000002,0,1);
-      send_pixel(24'h000003,0,0);
-      send_pixel(24'h000004,0,1);
+      send_pixel(24'hFF0000,1,0); // red in RBG stream order
+      send_pixel(24'h0000FF,0,1); // green in RBG stream order
+      send_pixel(24'h00FF00,0,0); // blue in RBG stream order
+      send_pixel(24'hFFFFFF,0,1);
     end
   endtask
 
@@ -162,10 +172,10 @@ module tb_video_pipeline_v1_0;
     bram_mem[1]=32'hFFFF001F;
     bram_mem[2]=32'd0;
     bram_mem[3]=32'd0;
-    expected[0]=24'h000001; expected[1]=24'h000001; expected[2]=24'h000002; expected[3]=24'h000002;
-    expected[4]=24'h000001; expected[5]=24'h000001; expected[6]=24'h000002; expected[7]=24'h000002;
-    expected[8]=24'h000003; expected[9]=24'h000003; expected[10]=24'h000004; expected[11]=24'h000004;
-    expected[12]=24'h000003; expected[13]=24'h000003; expected[14]=24'h000004; expected[15]=24'h000004;
+    expected[0]=24'hFF0000; expected[1]=24'hFF0000; expected[2]=24'h0000FF; expected[3]=24'h0000FF;
+    expected[4]=24'hFF0000; expected[5]=24'hFF0000; expected[6]=24'h0000FF; expected[7]=24'h0000FF;
+    expected[8]=24'h00FF00; expected[9]=24'h00FF00; expected[10]=24'hFFFFFF; expected[11]=24'hFFFFFF;
+    expected[12]=24'h00FF00; expected[13]=24'h00FF00; expected[14]=24'hFFFFFF; expected[15]=24'hFFFFFF;
 
     repeat(4) @(negedge clk);
     rst_n=1;
@@ -197,17 +207,31 @@ module tb_video_pipeline_v1_0;
     axi_read(6'h10,readback);
     if(readback[7:6]!==2'd1) $fatal(1,"TEST_FAIL: active source was not HLS (%h)",readback);
 
+    // XRGB memory containers are RGB internally; the public stream output is RBG.
+    expected[0]=24'h113322; expected[1]=24'h113322; expected[2]=24'h446655; expected[3]=24'h446655;
+    expected[4]=24'h113322; expected[5]=24'h113322; expected[6]=24'h446655; expected[7]=24'h446655;
+    expected[8]=24'h779988; expected[9]=24'h779988; expected[10]=24'hAACCBB; expected[11]=24'hAACCBB;
+    expected[12]=24'h779988; expected[13]=24'h779988; expected[14]=24'hAACCBB; expected[15]=24'hAACCBB;
+    @(negedge clk); output_index=0;
+    axi_write(6'h00,32'h0000_014d,1); // VDMA source with XRGB8888 memory format
+    repeat(4) @(negedge clk);
+    send_xrgb_vdma_frame();
+    wait(dut.cfg_frame_count==3);
+    if(output_index!=16) $fatal(1,"TEST_FAIL: XRGB VDMA source output count %0d",output_index);
+    axi_read(6'h10,readback);
+    if(readback[7:6]!==2'd2) $fatal(1,"TEST_FAIL: active source was not XRGB VDMA (%h)",readback);
+
     // BRAM source unpacks two RGB565 pixels per synchronous 32-bit word.
-    expected[0]=24'hFF0000; expected[1]=24'hFF0000; expected[2]=24'h00FF00; expected[3]=24'h00FF00;
-    expected[4]=24'hFF0000; expected[5]=24'hFF0000; expected[6]=24'h00FF00; expected[7]=24'h00FF00;
-    expected[8]=24'h0000FF; expected[9]=24'h0000FF; expected[10]=24'hFFFFFF; expected[11]=24'hFFFFFF;
-    expected[12]=24'h0000FF; expected[13]=24'h0000FF; expected[14]=24'hFFFFFF; expected[15]=24'hFFFFFF;
+    expected[0]=24'hFF0000; expected[1]=24'hFF0000; expected[2]=24'h0000FF; expected[3]=24'h0000FF;
+    expected[4]=24'hFF0000; expected[5]=24'hFF0000; expected[6]=24'h0000FF; expected[7]=24'h0000FF;
+    expected[8]=24'h00FF00; expected[9]=24'h00FF00; expected[10]=24'hFFFFFF; expected[11]=24'hFFFFFF;
+    expected[12]=24'h00FF00; expected[13]=24'h00FF00; expected[14]=24'hFFFFFF; expected[15]=24'hFFFFFF;
     @(negedge clk); output_index=0;
     axi_write(6'h08,32'd4,1);
     axi_write(6'h0c,32'd0,0);
     axi_write(6'h00,32'h0000_0339,1); // BRAM source plus one-frame request and commit
     repeat(4) @(negedge clk);
-    wait(dut.cfg_frame_count==3);
+    wait(dut.cfg_frame_count==4);
     if(output_index!=16 || !bram_done_seen) $fatal(1,"TEST_FAIL: BRAM source output/status mismatch");
     axi_read(6'h10,readback);
     if(readback[7:6]!==2'd0) $fatal(1,"TEST_FAIL: active source was not BRAM (%h)",readback);

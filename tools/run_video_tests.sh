@@ -32,6 +32,11 @@ run_xsim tb_video_pipeline_v1_0 \
   "$hdl/axis_video_mux3.sv" "$hdl/video_bram_rgb565_reader.sv" \
   "$hdl/axi_lite_video_regs.sv" "$hdl/video_pipeline_v1_0.sv" \
   "$repo_root/tests/rtl/tb_video_pipeline_v1_0.sv"
+run_xsim tb_video_pipeline_static_profile \
+  "$hdl/axis_video_nn_scaler.sv" "$hdl/axis_rgb888.sv" \
+  "$hdl/axis_video_mux3.sv" "$hdl/video_bram_rgb565_reader.sv" \
+  "$hdl/axi_lite_video_regs.sv" "$hdl/video_pipeline_v1_0.sv" \
+  "$repo_root/tests/rtl/tb_video_pipeline_static_profile.sv"
 
 gcc -std=c99 -Wall -Wextra -Werror -pedantic \
   -I"$repo_root/software" "$repo_root/software/video_out.c" \

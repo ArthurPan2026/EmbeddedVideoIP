@@ -27,7 +27,7 @@ module tb_axis_video_nn_scaler;
   wire [9:0] active_width;
   wire [9:0] active_height;
 
-  logic [23:0] expected [0:15];
+  logic [23:0] expected [0:16];
   integer output_index = 0;
   integer cycle_count = 0;
   integer test_case = 0;
@@ -37,7 +37,8 @@ module tb_axis_video_nn_scaler;
 
   axis_video_nn_scaler #(
     .MAX_INPUT_WIDTH(4), .MAX_INPUT_HEIGHT(4),
-    .OUTPUT_WIDTH(4), .OUTPUT_HEIGHT(4)
+    .OUTPUT_WIDTH(4), .OUTPUT_HEIGHT(4),
+    .MAX_BUFFER_WIDTH(2), .MAX_BUFFER_HEIGHT(2)
   ) dut (
     .aclk(clk), .aresetn(rst_n),
     .cfg_width(cfg_width), .cfg_height(cfg_height),
@@ -56,26 +57,45 @@ module tb_axis_video_nn_scaler;
 
   always @(posedge clk) begin
     cycle_count <= cycle_count + 1;
-    m_ready <= (cycle_count % 5 != 1);
+    if ((test_case == 4) && dut.line_buf_wr_en)
+      $fatal(1, "TEST_FAIL: direct 4x4 frame accessed line buffer");
+    m_ready <= ((cycle_count % 13) < 3) || ((cycle_count % 13) > 7);
+    if (was_stalled &&
+        (!m_valid || (m_data !== held_data) ||
+         (m_user !== held_user) || (m_last !== held_last)))
+      $fatal(1, "TEST_FAIL: output changed during AXIS backpressure");
     if (m_valid && !m_ready) begin
-      if (was_stalled &&
-          ((m_data !== held_data) || (m_user !== held_user) || (m_last !== held_last)))
-        $fatal(1, "TEST_FAIL: output changed during AXIS backpressure");
       was_stalled <= 1'b1;
       held_data <= m_data;
       held_user <= m_user;
       held_last <= m_last;
     end else if (m_valid && m_ready) begin
       was_stalled <= 1'b0;
-      if (output_index >= 16)
-        $fatal(1, "TEST_FAIL: too many output pixels");
-      if (m_data !== expected[output_index])
-        $fatal(1, "TEST_FAIL: case=%0d pixel=%0d got=%h expected=%h",
-               test_case, output_index, m_data, expected[output_index]);
-      if (m_user !== (output_index == 0))
-        $fatal(1, "TEST_FAIL: incorrect SOF at pixel %0d", output_index);
-      if (m_last !== ((output_index % 4) == 3))
-        $fatal(1, "TEST_FAIL: incorrect EOL at pixel %0d", output_index);
+      if (test_case == 6) begin
+        if (output_index >= 17)
+          $fatal(1, "TEST_FAIL: too many direct recovery pixels");
+        if (output_index == 0) begin
+          if (m_data !== 24'h020000 || !m_user || m_last)
+            $fatal(1, "TEST_FAIL: first partial direct pixel mismatch");
+        end else if (output_index == 1) begin
+          if (m_data !== 24'h021000 || !m_user || m_last)
+            $fatal(1, "TEST_FAIL: retried SOF was not forwarded");
+        end else begin
+          if (m_data !== (24'h021000 + output_index - 1) ||
+              m_user || (m_last !== (((output_index - 1) % 4) == 3)))
+            $fatal(1, "TEST_FAIL: recovered direct pixel mismatch at %0d", output_index);
+        end
+      end else begin
+        if (output_index >= 16)
+          $fatal(1, "TEST_FAIL: too many output pixels");
+        if (m_data !== expected[output_index])
+          $fatal(1, "TEST_FAIL: case=%0d pixel=%0d got=%h expected=%h",
+                 test_case, output_index, m_data, expected[output_index]);
+        if (m_user !== (output_index == 0))
+          $fatal(1, "TEST_FAIL: incorrect SOF at pixel %0d", output_index);
+        if (m_last !== ((output_index % 4) == 3))
+          $fatal(1, "TEST_FAIL: incorrect EOL at pixel %0d", output_index);
+      end
       output_index <= output_index + 1;
     end
   end
@@ -102,6 +122,32 @@ module tb_axis_video_nn_scaler;
       send_pixel(24'h000002, 1'b0, 1'b1);
       send_pixel(24'h000003, 1'b0, 1'b0);
       send_pixel(24'h000004, 1'b0, 1'b1);
+    end
+  endtask
+
+  task automatic send_4x4;
+    integer i;
+    begin
+      for (i=0; i<16; i=i+1) begin
+        send_pixel(24'h010000 + i, (i==0), ((i%4)==3));
+        if ((i==0) && (!busy || (active_width != 4) || (active_height != 4)))
+          $fatal(1, "TEST_FAIL: direct frame did not latch active geometry or busy");
+      end
+    end
+  endtask
+
+  task automatic send_partial_then_recover;
+    integer i;
+    begin
+      send_pixel(24'h020000, 1'b1, 1'b0);
+      if (!busy)
+        $fatal(1, "TEST_FAIL: direct partial frame did not assert busy");
+      // The new SOF must be held while the old direct frame aborts, then accepted.
+      send_pixel(24'h021000, 1'b1, 1'b0);
+      if (!busy)
+        $fatal(1, "TEST_FAIL: direct recovery did not restart the frame");
+      for (i=1; i<16; i=i+1)
+        send_pixel(24'h021000 + i, 1'b0, ((i%4)==3));
     end
   endtask
 
@@ -159,13 +205,75 @@ module tb_axis_video_nn_scaler;
     if (output_index != 16 || !error_flags[1])
       $fatal(1, "TEST_FAIL: malformed-frame recovery mismatch idx=%0d errors=%h", output_index, error_flags);
 
-    // Invalid geometry is reported and does not emit a frame.
+    // Exact 4x4 1:1 geometry bypasses the smaller 2x2 line buffer.
+    @(negedge clk);
+    clear_errors = 1'b1;
+    @(negedge clk);
+    clear_errors = 1'b0;
+    test_case = 4;
+    output_index = 0;
+    cfg_width=4; cfg_height=4;
+    cfg_active_width=4; cfg_active_height=4;
+    cfg_x_offset=0; cfg_y_offset=0;
+    cfg_source_x_origin=0; cfg_source_y_origin=0;
+    cfg_x_step=1; cfg_x_rem=0; cfg_y_step=1; cfg_y_rem=0;
+    #1;
+    expected[0]=24'h010000; expected[1]=24'h010001; expected[2]=24'h010002; expected[3]=24'h010003;
+    expected[4]=24'h010004; expected[5]=24'h010005; expected[6]=24'h010006; expected[7]=24'h010007;
+    expected[8]=24'h010008; expected[9]=24'h010009; expected[10]=24'h01000a; expected[11]=24'h01000b;
+    expected[12]=24'h01000c; expected[13]=24'h01000d; expected[14]=24'h01000e; expected[15]=24'h01000f;
+    if (!dut.cfg_bypass_1to1 || dut.cfg_invalid_geometry)
+      $fatal(1, "TEST_FAIL: exact 4x4 geometry did not select the valid direct path");
+    send_4x4();
+    wait (frame_count == 4);
+    if (output_index != 16 || error_flags != 0 || busy ||
+        active_width != 4 || active_height != 4)
+      $fatal(1, "TEST_FAIL: direct frame/status mismatch idx=%0d errors=%h", output_index, error_flags);
+
+    // A scaled 4x2 input exceeds the configured 2x2 line-buffer limits.
+    @(negedge clk);
+    test_case = 5;
+    output_index = 0;
+    cfg_width=4; cfg_height=2;
+    cfg_active_width=2; cfg_active_height=2;
+    cfg_x_offset=1; cfg_y_offset=1;
+    cfg_source_x_origin=0; cfg_source_y_origin=0;
+    cfg_x_step=2; cfg_x_rem=0; cfg_y_step=1; cfg_y_rem=0;
+    #1;
+    if (dut.cfg_bypass_1to1 || !dut.cfg_invalid_geometry)
+      $fatal(1, "TEST_FAIL: scaled geometry over buffer limit was not rejected");
+    send_pixel(24'h123456, 1'b1, 1'b0);
+    repeat (2) @(negedge clk);
+    if (!error_flags[0] || frame_count != 4 || output_index != 0 || busy || m_valid)
+      $fatal(1, "TEST_FAIL: over-buffer geometry emitted data or advanced the frame");
+
+    // Zero geometry also reports an error and does not emit a frame.
     @(negedge clk);
     cfg_width = 0;
     send_pixel(24'h123456, 1'b1, 1'b1);
     repeat (2) @(negedge clk);
-    if (!error_flags[0] || frame_count != 3)
+    if (!error_flags[0] || frame_count != 4)
       $fatal(1, "TEST_FAIL: invalid geometry was not rejected");
+
+    // A premature SOF aborts direct pass-through, remains unaccepted, then retries.
+    @(negedge clk);
+    clear_errors = 1'b1;
+    @(negedge clk);
+    clear_errors = 1'b0;
+    test_case = 6;
+    output_index = 0;
+    cfg_width=4; cfg_height=4;
+    cfg_active_width=4; cfg_active_height=4;
+    cfg_x_offset=0; cfg_y_offset=0;
+    cfg_source_x_origin=0; cfg_source_y_origin=0;
+    cfg_x_step=1; cfg_x_rem=0; cfg_y_step=1; cfg_y_rem=0;
+    #1;
+    if (!dut.cfg_bypass_1to1 || dut.cfg_invalid_geometry)
+      $fatal(1, "TEST_FAIL: recovery test did not configure direct mode");
+    send_partial_then_recover();
+    wait (frame_count == 5);
+    if (output_index != 17 || error_flags != 32'h0000_0004 || busy)
+      $fatal(1, "TEST_FAIL: direct early-SOF recovery mismatch idx=%0d errors=%h", output_index, error_flags);
 
     $display("TEST_PASS: tb_axis_video_nn_scaler");
     $finish;

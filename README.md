@@ -8,7 +8,7 @@ The reusable datapath uses plain SystemVerilog and AXI4-Stream Video. It does no
 
 BRAM frame reader, HLS AXI4-Stream, and AXI VDMA MM2S each feed a source mux. The selected stream passes through format conversion and a nearest-neighbor scaler/bypass, then AXI4-Stream Video feeds the platform video-out/VTC and Digilent rgb2dvi.
 
-The library provides source adapters, the portable stream core, a matching PS C API, a Zybo Z7-20/Zynq-7000 BSP adapter, a Vivado IP-packaging script, reference block-design/build recipes, simulation tests, and deployment integration with the GBA project.
+The library provides source adapters, the portable stream core, a matching PS C API, a Zybo Z7-20/Zynq-7000 BSP adapter, a Vivado IP-packaging script, reference block-design/build recipes, simulation tests, and deployment integration with the GBA project. AXI4-Stream Video uses AMD RBG component packing; the core normalizes to internal RGB and restores RBG on output.
 
 ## V1 behavior
 

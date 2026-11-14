@@ -5,7 +5,17 @@ module video_pipeline_v1_0_wrapper #(
   parameter integer OUTPUT_WIDTH = 640,
   parameter integer OUTPUT_HEIGHT = 480,
   parameter integer BRAM_ADDR_WIDTH = 18,
-  parameter integer AXI_ADDR_WIDTH = 6
+  parameter integer AXI_ADDR_WIDTH = 6,
+  parameter integer ENABLE_BRAM_SOURCE = 1,
+  parameter integer ENABLE_HLS_SOURCE = 1,
+  parameter integer ENABLE_VDMA_SOURCE = 1,
+  parameter integer SOURCE_SELECT_MODE = 0,
+  parameter integer FIXED_SOURCE = 2,
+  parameter integer FORMAT_SELECT_MODE = 0,
+  parameter integer FIXED_FORMAT = 2,
+  parameter integer MAX_SCALER_INPUT_WIDTH = MAX_INPUT_WIDTH,
+  parameter integer MAX_SCALER_INPUT_HEIGHT = MAX_INPUT_HEIGHT,
+  parameter integer ENABLE_SCALER = 1
 ) (
   input wire aclk,
   input wire aresetn,
@@ -53,7 +63,17 @@ module video_pipeline_v1_0_wrapper #(
     .OUTPUT_WIDTH(OUTPUT_WIDTH),
     .OUTPUT_HEIGHT(OUTPUT_HEIGHT),
     .BRAM_ADDR_WIDTH(BRAM_ADDR_WIDTH),
-    .AXI_ADDR_WIDTH(AXI_ADDR_WIDTH)
+    .AXI_ADDR_WIDTH(AXI_ADDR_WIDTH),
+    .ENABLE_BRAM_SOURCE(ENABLE_BRAM_SOURCE),
+    .ENABLE_HLS_SOURCE(ENABLE_HLS_SOURCE),
+    .ENABLE_VDMA_SOURCE(ENABLE_VDMA_SOURCE),
+    .SOURCE_SELECT_MODE(SOURCE_SELECT_MODE),
+    .FIXED_SOURCE(FIXED_SOURCE),
+    .FORMAT_SELECT_MODE(FORMAT_SELECT_MODE),
+    .FIXED_FORMAT(FIXED_FORMAT),
+    .MAX_SCALER_INPUT_WIDTH(MAX_SCALER_INPUT_WIDTH),
+    .MAX_SCALER_INPUT_HEIGHT(MAX_SCALER_INPUT_HEIGHT),
+    .ENABLE_SCALER(ENABLE_SCALER)
   ) core (
     .aclk(aclk), .aresetn(aresetn),
     .bram_en(bram_en), .bram_addr(bram_addr), .bram_dout(bram_dout),

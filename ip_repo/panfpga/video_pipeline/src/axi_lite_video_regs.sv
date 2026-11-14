@@ -35,6 +35,11 @@ module axi_lite_video_regs #(
   output logic cfg_commit,
   output logic bram_start,
   output logic clear_errors,
+  output logic abort_stream,
+  output logic resume_stream,
+  input logic cfg_pending,
+  input logic stream_hold,
+  input logic active_enable,
   input logic busy, input logic bram_busy,
   input logic [1:0] active_source,
   input logic [9:0] active_width, input logic [9:0] active_height,
@@ -121,7 +126,8 @@ module axi_lite_video_regs #(
       REG_SIZE: read_value = size_reg;
       REG_STRIDE: read_value = stride_reg;
       REG_BRAM_BASE: read_value = bram_base_reg;
-      REG_STATUS: read_value = {24'd0, active_source, bram_busy, busy, 4'd0};
+      REG_STATUS: read_value = {24'd0, active_source, bram_busy, busy,
+                                1'b0, cfg_pending, stream_hold, active_enable};
       REG_FRAME_COUNT: read_value = frame_count;
       REG_ERRORS: read_value = error_flags;
       REG_ACTIVE_CFG: read_value = active_cfg_reg;
@@ -149,10 +155,13 @@ module axi_lite_video_regs #(
       awaddr_saved <= '0; wdata_saved <= '0; wstrb_saved <= '0;
       s_axi_bvalid <= 1'b0; s_axi_rvalid <= 1'b0; s_axi_rdata <= 32'd0;
       cfg_commit <= 1'b0; bram_start <= 1'b0; clear_errors <= 1'b0;
+      abort_stream <= 1'b0; resume_stream <= 1'b0;
     end else begin
       cfg_commit <= 1'b0;
       bram_start <= 1'b0;
       clear_errors <= 1'b0;
+      abort_stream <= 1'b0;
+      resume_stream <= 1'b0;
 
       if (aw_fire) begin awaddr_saved <= s_axi_awaddr; aw_saved <= 1'b1; end
       if (w_fire) begin
@@ -166,10 +175,12 @@ module axi_lite_video_regs #(
           REG_CTRL: begin
             logic [31:0] merged;
             merged = merge_strb(ctrl_reg, write_data, write_strb);
-            ctrl_reg <= {merged[31:11], 3'b000, merged[7:0]};
+            ctrl_reg <= {merged[31:13], 5'b00000, merged[7:0]};
             if (write_strb[1] && write_data[8]) cfg_commit <= 1'b1;
             if (write_strb[1] && write_data[9]) bram_start <= 1'b1;
             if (write_strb[1] && write_data[10]) clear_errors <= 1'b1;
+            if (write_strb[1] && write_data[11]) abort_stream <= 1'b1;
+            if (write_strb[1] && write_data[12]) resume_stream <= 1'b1;
           end
           REG_SIZE: size_reg <= merge_strb(size_reg, write_data, write_strb);
           REG_STRIDE: stride_reg <= merge_strb(stride_reg, write_data, write_strb);

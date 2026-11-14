@@ -13,7 +13,14 @@ extern "C" {
 #endif
 
 typedef enum { VIDEO_OUT_SOURCE_BRAM=0, VIDEO_OUT_SOURCE_HLS=1, VIDEO_OUT_SOURCE_VDMA=2 } VideoOutSource;
-typedef enum { VIDEO_OUT_PIX_RGB565=0, VIDEO_OUT_PIX_RGB888=1, VIDEO_OUT_PIX_XRGB8888=2, VIDEO_OUT_PIX_BGRX8888=3 } VideoOutPixelFormat;
+/* RGB888 on AXI4-Stream Video uses AMD component order RBG. XRGB/BGRX
+ * describe 32-bit pixel containers in memory; the core normalizes internally. */
+typedef enum {
+    VIDEO_OUT_PIX_RGB565 = 0,
+    VIDEO_OUT_PIX_RGB888 = 1,
+    VIDEO_OUT_PIX_XRGB8888 = 2,
+    VIDEO_OUT_PIX_BGRX8888 = 3
+} VideoOutPixelFormat;
 typedef enum { VIDEO_OUT_SCALE_BYPASS=0, VIDEO_OUT_SCALE_NEAREST=1 } VideoOutScaleMode;
 typedef enum { VIDEO_OUT_ASPECT_FIT=0, VIDEO_OUT_ASPECT_STRETCH=1 } VideoOutAspectMode;
 
@@ -46,6 +53,9 @@ typedef struct {
     uint32_t active_width;
     uint32_t active_height;
     uint8_t busy;
+    uint8_t enabled;
+    uint8_t stream_held;
+    uint8_t config_pending;
 } VideoOutStatus;
 
 int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
