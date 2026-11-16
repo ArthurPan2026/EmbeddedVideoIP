@@ -14,7 +14,7 @@ V1 是配套 PL+PS 的 EmbeddedVideoIP composite IP。Vivado IP Integrator 中�
 | HLS 视频源 | AXI4-Stream Video | RTL 仿真，尚未在板上逐源验证 |
 | BRAM RGB565 源 | 同步 BRAM 读接口 | RTL 仿真，尚未在板上逐源验证 |
 | HDMI 发送适配器 | 7-series / Zybo Z7-20 / XC7Z020 | 目标板约束与系统验证 |
-| HDMI 音频 | 固定 2 声道 16-bit/48 kHz LPCM、ACR、Audio InfoFrame 与数据岛子集 | RTL/XSim覆盖；未完成完整 HDMI 认证或正式板级音频验收 |
+| HDMI 音频 | 固定 2 声道 16-bit/48 kHz LPCM、ACR、Audio InfoFrame 与数据岛子集 | RTL/XSim 通过；2026-11-16 在 GBA/Zybo Z7-20 消费工程中，C1-1 捕获到 PCM 且电平响应音量设置。扬声器听音、完整 HDMI 认证和正式板级验收仍待完成，见[预验证记录](validation-2026-11-16-hdmi-audio.md) |
 | 其他器件系列 | 暂无开箱即用声明 | 需另做 PHY、时钟、I/O、综合、时序和板测验证 |
 
 ## 器件适配说明

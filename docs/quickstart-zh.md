@@ -4,7 +4,7 @@
 
 EmbeddedVideoIP 0.2.0-dev.4 以配套 PL+PS 产品交付。消费者在 IP Integrator 中只添加 `panfpga.org:video:embedded_video_ip:1.0` 顶层组件。V1 板级参考配置为 Zybo Z7-20 / XC7Z020 / Zynq-7000，Vivado/Vitis 2025.2.1，视频输出固定 640×480p60。
 
-视频输入支持 VDMA MM2S、HLS AXI4-Stream 和 BRAM RGB565。HDMI 音频配置为固定 2 声道 16-bit/48 kHz LPCM，并生成 ACR、Audio InfoFrame 和数据岛子集；它尚未完成 HDMI 认证或正式板级音频验收。EmbeddedVideoIP 不包含 I²S codec 输出；如果消费板需要 codec，codec 数据与初始化留在消费工程。
+视频输入支持 VDMA MM2S、HLS AXI4-Stream 和 BRAM RGB565。HDMI 音频配置为固定 2 声道 16-bit/48 kHz LPCM，并生成 ACR、Audio InfoFrame 和数据岛子集。2026-11-16 的 GBA 消费工程预验证已在 C1-1 采到 PCM；显示器扬声器听音、正式板级验收和 HDMI 认证仍未完成，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。EmbeddedVideoIP 不包含 I²S codec 输出；如果消费板需要 codec，codec 数据与初始化留在消费工程。
 
 ## 构建和验证 IP
 

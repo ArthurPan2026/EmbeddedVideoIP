@@ -2,7 +2,7 @@
 
 EmbeddedVideoIP 0.2.0-dev.4 是面向 Vivado PL+PS 工程的可复用视频输出子系统。消费者在 Vivado IP Integrator 中使用一个组合式顶层 IP；内部集成视频处理、输出时序、HDMI 发送适配和可选 HDMI 音频。配套 PS C 库负责配置视频、VDMA 和 HDMI 音频。
 
-V1 只交付 PL+PS 配套产品，不支持 PL-only。既有视频输出路径已在 Zybo Z7-20 / XC7Z020 / Zynq-7000 上验证，构建工具为 Vivado/Vitis 2025.2.1。本轮新增 HDMI 音频尚未完成完整 HDMI 认证或正式板级音频验收，不能据此宣称音频功能已通过板测。
+V1 只交付 PL+PS 配套产品，不支持 PL-only。既有视频输出路径已在 Zybo Z7-20 / XC7Z020 / Zynq-7000 上验证，构建工具为 Vivado/Vitis 2025.2.1。2026-11-16 已在 GBA 消费工程上完成 HDMI 音频信号路径预验证：C1-1 USB3 Audio 采到 48 kHz PCM，且采集电平随音量设定变化。这证明音频数据到达采集卡，不代表显示器扬声器听感或 HDMI 标准符合性已经通过；正式板级验收与 HDMI 认证仍未完成。细节见[HDMI 音频预验证记录](docs/validation-2026-11-16-hdmi-audio.md)。
 
 ## 功能结构
 
@@ -16,7 +16,7 @@ V1 只交付 PL+PS 配套产品，不支持 PL-only。既有视频输出路径�
 
 ## HDMI 音频接口
 
-V1 音频只实现固定 640×480p60 视频模式下的双声道 16-bit/48 kHz LPCM、ACR、Audio InfoFrame 和数据岛子集。实现参考公开的 HDMI 1.3 资料、AMD PG235 与 XAPP460，尚未完成正式 HDMI 认证或板级音频验收。PCM 输入每次握手传输一对有符号 16-bit 样本：`TDATA[15:0]` 为左声道，`TDATA[31:16]` 为右声道。V1 默认采样率为 48 kHz。AXI4-Stream 的 `TVALID/TREADY` 负责背压；消费项目负责提供采样节拍正确的 PCM 样本。
+V1 音频只实现固定 640×480p60 视频模式下的双声道 16-bit/48 kHz LPCM、ACR、Audio InfoFrame 和数据岛子集。实现参考公开的 HDMI 1.3 资料、AMD PG235 与 XAPP460，2026-11-16 已在 GBA 消费工程完成音频信号路径预验证；正式 HDMI 认证和板级音频验收仍未完成，详见[预验证记录](docs/validation-2026-11-16-hdmi-audio.md)。PCM 输入每次握手传输一对有符号 16-bit 样本：`TDATA[15:0]` 为左声道，`TDATA[31:16]` 为右声道。V1 默认采样率为 48 kHz。AXI4-Stream 的 `TVALID/TREADY` 负责背压；消费项目负责提供采样节拍正确的 PCM 样本。
 
 音频链路通过 `AUDIO_CTRL` 控制 HDMI 音频使能和静音，通过 `AUDIO_GAIN_Q15` 配置音量，并可读取 FIFO 欠载状态。V1 的状态寄存器 bit 2 保留并恒为 0。详细接口见[组合式顶层接口](docs/composite-ip-api.md)和[寄存器表](docs/register-map.md)。
 

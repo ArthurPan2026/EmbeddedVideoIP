@@ -39,7 +39,7 @@ Zybo Z7-20 时钟 profile 使用 50 MHz `hdmi_ref_clk`，输出像素时钟约 2
 | `s_axis_audio_pcm_tvalid` | 输入 | 当前立体声样本对有效 |
 | `s_axis_audio_pcm_tready` | 输出 | HDMI 音频通路可接受样本对时拉高 |
 
-PCM 按 AXI4-Stream 规则握手：生产者只在 `TVALID && TREADY` 时推进样本，并在被背压期间保持 `TVALID/TDATA` 稳定。V1 的音频范围固定为 2 声道 16-bit/48 kHz LPCM，并匹配 25.178571 MHz 像素时钟。消费者不分别配置采样率和像素时钟；音源适配器负责按 48 kHz 提供样本有效节拍。实现覆盖 ACR、Audio InfoFrame 和 HDMI 数据岛子集，参考公开 HDMI 1.3 资料、AMD PG235 与 XAPP460。该功能尚未完成 HDMI 认证或正式板级音频验收。接口不包含应用或游戏专属语义。ACR 由静态 profile 的实际像素时钟计算。
+PCM 按 AXI4-Stream 规则握手：生产者只在 `TVALID && TREADY` 时推进样本，并在被背压期间保持 `TVALID/TDATA` 稳定。V1 的音频范围固定为 2 声道 16-bit/48 kHz LPCM，并匹配 25.178571 MHz 像素时钟。消费者不分别配置采样率和像素时钟；音源适配器负责按 48 kHz 提供样本有效节拍。实现覆盖 ACR、Audio InfoFrame 和 HDMI 数据岛子集，参考公开 HDMI 1.3 资料、AMD PG235 与 XAPP460。2026-11-16 在 GBA 消费工程中完成信号路径预验证，C1-1 捕获到音频 PCM；尚未确认扬声器听感，也未完成正式板级验收或 HDMI 认证，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。接口不包含应用或游戏专属语义。ACR 由静态 profile 的实际像素时钟计算。
 
 ### 控制与音频状态
 

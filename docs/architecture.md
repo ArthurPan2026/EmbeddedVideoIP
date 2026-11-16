@@ -44,7 +44,7 @@ AXI4-Stream Video 每个握手 beat 对应一个像素。`TUSER[0]` 标记帧首
 
 可选音频接口是 100 MHz AXI4-Stream PCM 输入。每个有效 beat 携带一对 signed 16-bit 样本：左声道位于 `TDATA[15:0]`，右声道位于 `TDATA[31:16]`。V1 的 `AUDIO_SAMPLE_RATE_HZ` 默认值为 48000；消费项目源 adapter 负责按该采样率产生 `TVALID`。
 
-EmbeddedVideoIP 内部为 HDMI 音频路径提供样本 FIFO、HDMI 子帧/音频包格式化、ACR 参数和 HDMI 发送调度。V1 固定为 2 声道 16-bit/48 kHz LPCM，并实现 Audio InfoFrame 与数据岛子集，依据公开 HDMI 1.3 资料、AMD PG235 与 XAPP460 编写；尚未完成正式 HDMI 认证或板级音频验收。控制寄存器可使能/静音 HDMI 音频并设定 Q15 增益。EmbeddedVideoIP 不包含 I²S codec 发送器或特定 codec 控制；这类额外音频设备由消费工程管理。
+EmbeddedVideoIP 内部为 HDMI 音频路径提供样本 FIFO、HDMI 子帧/音频包格式化、ACR 参数和 HDMI 发送调度。V1 固定为 2 声道 16-bit/48 kHz LPCM，并实现 Audio InfoFrame 与数据岛子集，依据公开 HDMI 1.3 资料、AMD PG235 与 XAPP460 编写。2026-11-16 在 GBA 消费工程上完成信号路径预验证，采集卡收到 PCM；尚未确认显示器扬声器听感，也未完成正式 HDMI 音频验收或认证，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。控制寄存器可使能/静音 HDMI 音频并设定 Q15 增益。EmbeddedVideoIP 不包含 I²S codec 发送器或特定 codec 控制；这类额外音频设备由消费工程管理。
 
 ## HDMI 与板级边界
 
