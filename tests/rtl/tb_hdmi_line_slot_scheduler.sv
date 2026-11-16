@@ -1,0 +1,117 @@
+`timescale 1ns/1ps
+module tb_hdmi_line_slot_scheduler;
+  localparam integer H_TOTAL=140, H_ACTIVE=40, H_SYNC_START=48;
+  localparam logic [2:0] MODE_CONTROL=3'd0, MODE_VIDEO=3'd1,
+                         MODE_VIDEO_PREAMBLE=3'd2, MODE_DATA_PREAMBLE=3'd3,
+                         MODE_VIDEO_GUARD=3'd4, MODE_DATA_GUARD=3'd5,
+                         MODE_DATA_PAYLOAD=3'd6;
+  logic pixel_clk=0, aresetn=0;
+  logic [7:0] test_x=0;
+  logic [3:0] line_index=0;
+  logic hsync_high, hsync_low;
+  logic raw_de, delayed_de;
+  logic packet_loaded=1, packet_offer=0, packet_cancel=0;
+  logic prep_high, prep_low, start_high, start_low;
+  logic [2:0] mode_high, mode_low;
+  integer prepare_events=0, packet_starts=0;
+  integer cycles;
+  logic current_line_active, next_line_active;
+
+  always #5 pixel_clk=~pixel_clk;
+  always_comb begin
+    hsync_high=(test_x>=H_SYNC_START && test_x<H_SYNC_START+12);
+    hsync_low=~hsync_high;
+    current_line_active=(line_index==4'd2 || line_index==4'd3 || line_index==4'd6);
+    next_line_active=(line_index==4'd1 || line_index==4'd2 || line_index==4'd5);
+    delayed_de=current_line_active && (test_x<H_ACTIVE);
+    raw_de=(current_line_active && test_x<30) || (next_line_active && test_x>=H_TOTAL-10);
+  end
+
+  always_ff @(posedge pixel_clk or negedge aresetn) begin
+    if (!aresetn) begin
+      test_x<=0;
+      line_index<=0;
+    end else if (test_x==H_TOTAL-1) begin
+      test_x<=0;
+      line_index<=line_index+1'b1;
+    end else begin
+      test_x<=test_x+1'b1;
+    end
+  end
+
+  hdmi_line_slot_scheduler #(
+    .H_TOTAL(H_TOTAL), .H_ACTIVE_SIZE(H_ACTIVE), .H_SYNC_START(H_SYNC_START),
+    .HSYNC_ACTIVE_LEVEL(1'b1), .VIDEO_LOOKAHEAD_CYCLES(10)
+  ) dut_high (
+    .pixel_clk(pixel_clk), .aresetn(aresetn),
+    .video_de_lookahead(raw_de), .video_de_delayed(delayed_de),
+    .hsync_delayed(hsync_high), .packet_loaded(packet_loaded),
+    .packet_offer(packet_offer), .packet_cancel(packet_cancel),
+    .line_prepare(prep_high), .symbol_mode(mode_high), .packet_start(start_high)
+  );
+
+  hdmi_line_slot_scheduler #(
+    .H_TOTAL(H_TOTAL), .H_ACTIVE_SIZE(H_ACTIVE), .H_SYNC_START(H_SYNC_START),
+    .HSYNC_ACTIVE_LEVEL(1'b0), .VIDEO_LOOKAHEAD_CYCLES(10)
+  ) dut_low (
+    .pixel_clk(pixel_clk), .aresetn(aresetn),
+    .video_de_lookahead(raw_de), .video_de_delayed(delayed_de),
+    .hsync_delayed(hsync_low), .packet_loaded(packet_loaded),
+    .packet_offer(packet_offer), .packet_cancel(packet_cancel),
+    .line_prepare(prep_low), .symbol_mode(mode_low), .packet_start(start_low)
+  );
+
+  always @(posedge pixel_clk) begin
+    if (aresetn) begin
+      #1;
+      if (dut_high.x_count !== dut_low.x_count || prep_high !== prep_low ||
+          mode_high !== mode_low || start_high !== start_low)
+        $fatal(1,"HSYNC正/负极性同步结果不一致");
+      if (prep_high) begin
+        prepare_events=prepare_events+1;
+        if (dut_high.x_count!==H_ACTIVE-20)
+          $fatal(1,"line_prepare不在每行准备点触发");
+      end
+      if (start_high) begin
+        packet_starts=packet_starts+1;
+        if (dut_high.x_count!==H_SYNC_START+12+8+2-1)
+          $fatal(1,"数据包未在前保护带最后一拍启动");
+      end
+      if (dut_high.timing_locked && !delayed_de && !raw_de) begin
+        if (dut_high.x_count>=H_SYNC_START+12 && dut_high.x_count<H_SYNC_START+20 &&
+            mode_high!==MODE_DATA_PREAMBLE)
+          $fatal(1,"VBlank扫描行缺少数据岛前导");
+        if (dut_high.x_count>=H_SYNC_START+20 && dut_high.x_count<H_SYNC_START+22 &&
+            mode_high!==MODE_DATA_GUARD)
+          $fatal(1,"数据岛前保护带拍数错误");
+        if (dut_high.x_count>=H_SYNC_START+22 && dut_high.x_count<H_SYNC_START+54 &&
+            mode_high!==MODE_DATA_PAYLOAD)
+          $fatal(1,"数据岛未连续输出32拍负载");
+        if (dut_high.x_count>=H_SYNC_START+54 && dut_high.x_count<H_SYNC_START+56 &&
+            mode_high!==MODE_DATA_GUARD)
+          $fatal(1,"数据岛尾保护带拍数错误");
+      end
+    end
+  end
+
+  initial begin
+    repeat(3) @(posedge pixel_clk);
+    @(negedge pixel_clk); aresetn=1;
+    // 运行活动行和垂直消隐行：VDE持续为低时，HSYNC仍须逐行启动slot。
+    repeat(H_TOTAL*7+30) @(posedge pixel_clk);
+    if (prepare_events<5)
+      $fatal(1,"活动区与VBlank行的line_prepare数量不足：%0d",prepare_events);
+    if (packet_starts<5)
+      $fatal(1,"VBlank期间没有持续插入数据包：%0d",packet_starts);
+
+    // 异步复位后应重新等待HSYNC边沿以建立行相位。
+    @(negedge pixel_clk); aresetn=0;
+    repeat(2) @(posedge pixel_clk);
+    @(negedge pixel_clk); aresetn=1;
+    repeat(H_TOTAL+80) @(posedge pixel_clk);
+    if (!dut_high.timing_locked || !dut_low.timing_locked)
+      $fatal(1,"复位后未重新锁定HSYNC边沿");
+    $display("TEST_PASS: hdmi_line_slot_scheduler, prepare=%0d packets=%0d",prepare_events,packet_starts);
+    $finish;
+  end
+endmodule

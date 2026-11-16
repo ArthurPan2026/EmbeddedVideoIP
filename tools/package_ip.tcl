@@ -31,9 +31,12 @@ set_property top video_pipeline_v1_0_wrapper [current_fileset]
 update_compile_order -fileset sources_1
 ipx::package_project -root_dir $package_root -vendor panfpga.org -library video -taxonomy /Video -import_files -force
 set core [ipx::current_core]
+set version_fd [open [file join $repo_root VERSION] r]
+set product_version [string trim [read $version_fd]]
+close $version_fd
 set_property name video_pipeline $core
-set_property display_name {Embedded Video Pipeline} $core
-set_property description {Portable AXI4-Stream RGB888 scaler with BRAM, HLS, and VDMA source adapters.} $core
+set_property display_name "EmbeddedVideoIP internal video pipeline $product_version" $core
+set_property description "EmbeddedVideoIP internal video pipeline for product release $product_version." $core
 set_property version 1.0 $core
 set_property vendor_display_name {Personal FPGA IP} $core
 set supported {}

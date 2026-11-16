@@ -16,7 +16,8 @@ module video_pipeline_v1_0_wrapper #(
   parameter integer MAX_SCALER_INPUT_WIDTH = MAX_INPUT_WIDTH,
   parameter integer MAX_SCALER_INPUT_HEIGHT = MAX_INPUT_HEIGHT,
   parameter integer ENABLE_SCALER = 1,
-  parameter integer LINE_BUFFER_IMPLEMENTATION = 0
+  parameter integer LINE_BUFFER_IMPLEMENTATION = 0,
+  parameter integer ENABLE_HDMI_AUDIO = 0
 ) (
   input wire aclk,
   input wire aresetn,
@@ -56,7 +57,12 @@ module video_pipeline_v1_0_wrapper #(
   output wire [31:0] s_axi_rdata,
   output wire [1:0] s_axi_rresp,
   output wire s_axi_rvalid,
-  input wire s_axi_rready
+  input wire s_axi_rready,
+  output wire hdmi_audio_enable,
+  output wire audio_mute,
+  output wire [16:0] audio_gain_q15,
+  input wire audio_underflow,
+  input wire audio_overflow
 );
   video_pipeline_v1_0 #(
     .MAX_INPUT_WIDTH(MAX_INPUT_WIDTH),
@@ -75,7 +81,8 @@ module video_pipeline_v1_0_wrapper #(
     .MAX_SCALER_INPUT_WIDTH(MAX_SCALER_INPUT_WIDTH),
     .MAX_SCALER_INPUT_HEIGHT(MAX_SCALER_INPUT_HEIGHT),
     .ENABLE_SCALER(ENABLE_SCALER),
-    .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION)
+    .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION),
+    .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO)
   ) core (
     .aclk(aclk), .aresetn(aresetn),
     .bram_en(bram_en), .bram_addr(bram_addr), .bram_dout(bram_dout),
@@ -95,6 +102,9 @@ module video_pipeline_v1_0_wrapper #(
     .s_axi_bresp(s_axi_bresp), .s_axi_bvalid(s_axi_bvalid), .s_axi_bready(s_axi_bready),
     .s_axi_araddr(s_axi_araddr), .s_axi_arvalid(s_axi_arvalid), .s_axi_arready(s_axi_arready),
     .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
-    .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready)
+    .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
+    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
+    .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
+    .audio_overflow(audio_overflow)
   );
 endmodule

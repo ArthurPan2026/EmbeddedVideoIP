@@ -16,9 +16,10 @@ from typing import Any, Callable, Iterable, Mapping
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "out"
 MANIFEST = OUT / "manifest.json"
-MANIFEST_SCHEMA_VERSION = 2
-INPUT_PARTITION_VERSION = 3
+MANIFEST_SCHEMA_VERSION = 3
+INPUT_PARTITION_VERSION = 4
 LOCK = json.loads((ROOT / "dependencies.lock.json").read_text(encoding="utf-8"))
+PRODUCT_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 DEFAULT_VIVADO = Path("/tools/AMDDesignTools/2025.2.1/Vivado/bin/vivado")
 
 PACKAGE_HDL_FILES = (
@@ -38,12 +39,47 @@ SYNTH_HDL_FILES = (
     "axi_lite_video_regs.sv",
     "video_pipeline_v1_0.sv",
 )
-SIM_HDL_FILES = SYNTH_HDL_FILES
+SIM_HDL_FILES = (
+    "axis_video_nn_scaler.sv",
+    "axis_rgb888.sv",
+    "axis_video_mux3.sv",
+    "video_bram_rgb565_reader.sv",
+    "axi_lite_video_regs.sv",
+    "video_pipeline_v1_0.sv",
+    "video_pipeline_v1_0_wrapper.v",
+    "audio_event_pulse_sync.sv",
+    "audio_gain_q15.sv",
+    "audio_pcm_async_fifo.sv",
+    "embedded_video_ip_reset_sync.sv",
+    "embedded_video_ip_top.v",
+    "embedded_video_ip_7series_tx.sv",
+    "hdmi_acr_packet.sv",
+    "hdmi_audio_infoframe.sv",
+    "hdmi_audio_sample_packet.sv",
+    "hdmi_bch_ecc.sv",
+    "hdmi_line_slot_scheduler.sv",
+    "hdmi_packet_assembler.sv",
+    "hdmi_pcm_packet_source.sv",
+    "hdmi_terc4_encoder.sv",
+    "hdmi_tmds_mode_mux.sv",
+    "hdmi_tmds_symbol_encoder.sv",
+    "hdmi_tmds_video_encoder.sv",
+)
+SIM_VHDL_FILES = ("DVI_Constants.vhd", "TMDS_Encoder.vhd", "OutputSERDES.vhd")
 SIM_RTL_TEST_FILES = (
     "tb_axis_video_nn_scaler.sv",
     "tb_video_bram_rgb565_reader.sv",
     "tb_video_pipeline_v1_0.sv",
     "tb_video_pipeline_static_profile.sv",
+    "tb_hdmi_primitives.sv",
+    "tb_hdmi_audio_packets.sv",
+    "tb_audio_pcm_async_fifo.sv",
+    "tb_hdmi_packet_assembler.sv",
+    "tb_hdmi_line_slot_scheduler.sv",
+    "tb_hdmi_tmds_mode_mux.sv",
+    "tb_hdmi_digilent_video_encoder.sv",
+    "tb_hdmi_pcm_packet_source.sv",
+    "tb_embedded_video_ip_7series_tx.sv",
 )
 SIM_SOFTWARE_FILES = (
     "video_out.c",
@@ -52,8 +88,8 @@ SIM_SOFTWARE_FILES = (
     "platforms/xilinx_zynq7000/video_out_xilinx.h",
 )
 CATALOG_BD_REL = Path(
-    "out/ip_catalog_validation_feature_profile/video_ip_validation.srcs/sources_1/bd/"
-    "video_pipeline_ip_validation/video_pipeline_ip_validation.bd"
+    "out/ip_catalog_validation_feature_profile/embedded_video_ip_catalog_validation.srcs/sources_1/bd/"
+    "embedded_video_ip_catalog_validation/embedded_video_ip_catalog_validation.bd"
 )
 SIM_LOG_REL = Path("out/tests/video-tests.log")
 SIM_TEST_LOG_RELS = (
@@ -62,8 +98,17 @@ SIM_TEST_LOG_RELS = (
     Path("out/tests/tb_video_bram_rgb565_reader/run.log"),
     Path("out/tests/tb_video_pipeline_v1_0/run.log"),
     Path("out/tests/tb_video_pipeline_static_profile/run.log"),
+    Path("out/tests/tb_hdmi_primitives/run.log"),
+    Path("out/tests/tb_hdmi_audio_packets/run.log"),
+    Path("out/tests/tb_audio_pcm_async_fifo/run.log"),
+    Path("out/tests/tb_hdmi_packet_assembler/run.log"),
+    Path("out/tests/tb_hdmi_line_slot_scheduler/run.log"),
+    Path("out/tests/tb_hdmi_tmds_mode_mux/run.log"),
+    Path("out/tests/tb_hdmi_digilent_video_encoder/run.log"),
+    Path("out/tests/tb_hdmi_pcm_packet_source/run.log"),
+    Path("out/tests/tb_embedded_video_ip_7series_tx/run.log"),
 )
-SYNTH_OUTPUT_NAMES = ("utilization.rpt", "timing_summary.rpt", "video_pipeline.dcp", "qor.json")
+SYNTH_REPORT_NAMES = ("utilization.rpt", "timing_summary.rpt", "qor.json")
 _VDMA_SCALER_PROFILE = {
     "MAX_INPUT_WIDTH": 640,
     "MAX_INPUT_HEIGHT": 480,
@@ -79,6 +124,21 @@ _VDMA_SCALER_PROFILE = {
     "MAX_SCALER_INPUT_WIDTH": 640,
     "MAX_SCALER_INPUT_HEIGHT": 480,
     "ENABLE_SCALER": 1,
+}
+_COMPOSITE_VIDEO_PROFILE = {
+    "MAX_INPUT_WIDTH": 640,
+    "MAX_INPUT_HEIGHT": 480,
+    "ENABLE_BRAM_SOURCE": 0,
+    "ENABLE_HLS_SOURCE": 0,
+    "ENABLE_VDMA_SOURCE": 1,
+    "SOURCE_SELECT_MODE": 1,
+    "FIXED_SOURCE": 2,
+    "FORMAT_SELECT_MODE": 1,
+    "FIXED_FORMAT": 2,
+    "MAX_SCALER_INPUT_WIDTH": 240,
+    "MAX_SCALER_INPUT_HEIGHT": 160,
+    "ENABLE_SCALER": 1,
+    "LINE_BUFFER_IMPLEMENTATION": 0,
 }
 SYNTH_PROFILE_GENERICS: dict[str, dict[str, int]] = {
     "generic": {},
@@ -104,7 +164,10 @@ SYNTH_PROFILE_GENERICS: dict[str, dict[str, int]] = {
         "FIXED_FORMAT": 2,
         "ENABLE_SCALER": 0,
     },
+    "composite_audio_off": {**_COMPOSITE_VIDEO_PROFILE, "ENABLE_HDMI_AUDIO": 0},
+    "composite_audio_on": {**_COMPOSITE_VIDEO_PROFILE, "ENABLE_HDMI_AUDIO": 1},
 }
+COMPOSITE_SYNTH_PROFILES = {"composite_audio_off", "composite_audio_on"}
 IGNORED_DIRS = {".git", ".Xil", "__pycache__", ".cache", "out"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
@@ -160,22 +223,44 @@ def _require_files(paths: Iterable[Path], stage: str) -> list[Path]:
     return result
 
 
-def stage_input_paths(stage: str, root: Path = ROOT) -> list[Path]:
-    """Select only files that can affect one flow stage."""
+def stage_input_paths(stage: str, root: Path = ROOT,
+                      profile: str | None = None) -> list[Path]:
+    """选择会影响当前构建阶段的文件。"""
     hdl_dir = root / "ip/video_pipeline_1_0/hdl"
+    third_party_dir = root / "third_party/digilent-rgb2dvi"
     common = [root / "tools/video_flow.py"]
 
     if stage == "package":
+        package_hdl = [
+            path for path in _tree_files(hdl_dir)
+            if path.suffix.lower() in {".sv", ".v"}
+        ]
+        third_party_sources = [
+            path for path in _tree_files(third_party_dir)
+            if path.suffix.lower() in {".vhd", ".md"}
+        ]
         paths = [
             *common,
+            root / "tools/package_all.tcl",
             root / "tools/package_ip.tcl",
-            *(hdl_dir / name for name in PACKAGE_HDL_FILES),
+            root / "tools/package_composite_ip.tcl",
+            root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_async_clock_groups.xdc",
+            root / "dependencies.lock.json",
+            root / "VERSION",
+            root / "NOTICE.md",
+            *package_hdl,
+            *third_party_sources,
         ]
     elif stage == "ip_catalog":
-        package_root = root / "ip_repo/panfpga/video_pipeline"
-        package_files = _tree_files(package_root)
-        if not (package_root / "component.xml").is_file():
-            raise FlowError(f"Packaged IP is missing; run the package stage first: {package_root}")
+        package_roots = [
+            root / "ip_repo/panfpga/video_pipeline",
+            root / "ip_repo/panfpga/embedded_video_ip",
+        ]
+        package_files = []
+        for package_root in package_roots:
+            if not (package_root / "component.xml").is_file():
+                raise FlowError(f"Packaged IP is missing; run the package stage first: {package_root}")
+            package_files.extend(_tree_files(package_root))
         paths = [*common, root / "tools/validate_ip_catalog.tcl", *package_files]
     elif stage == "sim":
         paths = [
@@ -187,6 +272,8 @@ def stage_input_paths(stage: str, root: Path = ROOT) -> list[Path]:
             root / "VERSION",
             *(hdl_dir / name for name in SIM_HDL_FILES),
             *(root / "tests/rtl" / name for name in SIM_RTL_TEST_FILES),
+            *(root / "third_party/digilent-rgb2dvi" / name for name in SIM_VHDL_FILES),
+            root / "dependencies.lock.json",
             *(root / "software" / name for name in SIM_SOFTWARE_FILES),
         ]
     elif stage == "synth":
@@ -195,15 +282,22 @@ def stage_input_paths(stage: str, root: Path = ROOT) -> list[Path]:
             root / "tools/synth_core.tcl",
             *(hdl_dir / name for name in SYNTH_HDL_FILES),
         ]
+        if profile in COMPOSITE_SYNTH_PROFILES:
+            package_outputs = stage_output_paths("package", root)
+            paths.extend([
+                root / "tools/synth_composite.tcl",
+                *package_outputs,
+            ])
     else:
         raise FlowError(f"Unknown stage input partition: {stage!r}")
 
     return _require_files(paths, stage)
 
 
-def input_manifest(stage: str, root: Path = ROOT) -> dict[str, str]:
-    """Hash the stage's exact source inputs, excluding unrelated docs/tests/PS as appropriate."""
-    paths = stage_input_paths(stage, root)
+def input_manifest(stage: str, root: Path = ROOT,
+                   profile: str | None = None) -> dict[str, str]:
+    """计算当前阶段源码的 SHA-256，排除无关文件。"""
+    paths = stage_input_paths(stage, root, profile)
     return {
         path.relative_to(root).as_posix(): sha256_file(path)
         for path in paths
@@ -223,6 +317,19 @@ def synth_profile_output_dir(part: str, profile: str, root: Path = ROOT) -> Path
     return base if profile == "generic" else base / "profiles" / profile
 
 
+def synth_checkpoint_name(profile: str) -> str:
+    return "embedded_video_ip.dcp" if profile in COMPOSITE_SYNTH_PROFILES else "video_pipeline.dcp"
+
+
+def synth_output_names(profile: str) -> tuple[str, ...]:
+    if profile in COMPOSITE_SYNTH_PROFILES:
+        return (
+            "utilization.rpt", "timing_summary.rpt", "clock_interaction.rpt",
+            "ignored_timing_exceptions.rpt", synth_checkpoint_name(profile), "qor.json",
+        )
+    return (*SYNTH_REPORT_NAMES[:2], synth_checkpoint_name(profile), SYNTH_REPORT_NAMES[2])
+
+
 def stage_manifest_key(name: str, profile: str | None = None) -> str:
     if name == "synth":
         return f"synth:{profile or 'generic'}"
@@ -234,11 +341,13 @@ def fingerprint(inputs: dict[str, str], vivado_version: str, action: str,
     data = {
         "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
         "input_partition_version": INPUT_PARTITION_VERSION,
+        "product_version": PRODUCT_VERSION,
         "action": action,
         "part": part,
         "profile": profile,
         "vivado_version": vivado_version,
         "vivado_required": str(LOCK["vivado"]),
+        "python_version": sys.version.split()[0] if action == "sim" else None,
         "inputs": inputs,
     }
     return sha256_json(data)
@@ -261,6 +370,7 @@ def write_manifest(data: dict[str, Any], root: Path = ROOT) -> None:
     manifest = root / "out/manifest.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     data["schema_version"] = MANIFEST_SCHEMA_VERSION
+    data["product_version"] = PRODUCT_VERSION
     data["generated_at_utc"] = now()
     temp = manifest.with_suffix(".tmp")
     temp.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf-8")
@@ -290,12 +400,13 @@ def vivado_version(vivado: Path) -> str:
 def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
                        profile: str | None = None) -> list[Path]:
     if name == "package":
-        package_root = root / "ip_repo/panfpga/video_pipeline"
-        paths = _tree_files(package_root)
-        if not (package_root / "component.xml").is_file():
-            raise FlowError(f"Packaged IP component.xml is missing: {package_root / 'component.xml'}")
-        if not any(path.suffix.lower() in {".sv", ".v"} for path in paths):
-            raise FlowError(f"Packaged IP has no HDL outputs: {package_root}")
+        core_root = root / "ip_repo/panfpga/video_pipeline"
+        composite_root = root / "ip_repo/panfpga/embedded_video_ip"
+        paths = [*_tree_files(core_root), *_tree_files(composite_root)]
+        if not (core_root / "component.xml").is_file():
+            raise FlowError(f"Internal video IP is missing: {core_root / 'component.xml'}")
+        if not (composite_root / "component.xml").is_file():
+            raise FlowError(f"Composite IP is missing: {composite_root / 'component.xml'}")
         return paths
     if name == "ip_catalog":
         return [root / CATALOG_BD_REL]
@@ -306,7 +417,7 @@ def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
             raise FlowError("Synthesis output validation requires a part.")
         selected_profile = profile or "generic"
         output_dir = synth_profile_output_dir(part, selected_profile, root)
-        return [output_dir / output for output in SYNTH_OUTPUT_NAMES]
+        return [output_dir / output for output in synth_output_names(selected_profile)]
     raise FlowError(f"Unknown stage output partition: {name!r}")
 
 
@@ -428,15 +539,25 @@ def write_synth_qor(root: Path, part: str, profile: str, tool_version: str,
     )
     metrics.update({
         "schema_version": 1,
+        "product_version": PRODUCT_VERSION,
         "stage": "synth",
         "profile": profile,
         "part": part,
         "vivado_version": tool_version,
+        "timing_scope": (
+            "pre-route OOC synthesis; compare profiles only, not board signoff"
+            if profile in COMPOSITE_SYNTH_PROFILES else "OOC core synthesis"
+        ),
+        "timing_signoff": False if profile in COMPOSITE_SYNTH_PROFILES else None,
         "input_sha256": input_hash,
         "report_sha256": {
             "utilization.rpt": sha256_file(output_dir / "utilization.rpt"),
             "timing_summary.rpt": sha256_file(output_dir / "timing_summary.rpt"),
-            "video_pipeline.dcp": sha256_file(output_dir / "video_pipeline.dcp"),
+            **({
+                "clock_interaction.rpt": sha256_file(output_dir / "clock_interaction.rpt"),
+                "ignored_timing_exceptions.rpt": sha256_file(output_dir / "ignored_timing_exceptions.rpt"),
+            } if profile in COMPOSITE_SYNTH_PROFILES else {}),
+            synth_checkpoint_name(profile): sha256_file(output_dir / synth_checkpoint_name(profile)),
         },
     })
     (output_dir / "qor.json").write_text(
@@ -466,6 +587,7 @@ def stage_cache_valid(name: str, record: Mapping[str, Any], input_hash: str,
         and record.get("input_partition_version") == INPUT_PARTITION_VERSION
         and record.get("input_sha256") == input_hash
         and record.get("vivado_version") == vivado_version_text
+        and (name != "sim" or record.get("python_version") == sys.version.split()[0])
         and record.get("part") == part
         and record.get("profile") == profile
         and outputs_match(name, record, root, part, profile)
@@ -537,10 +659,11 @@ def run_stage(name: str, command: list[str], vivado: Path,
         if part is None:
             raise FlowError("Synthesis QoR collection requires a part.")
         qor = write_synth_qor(root, part, profile or "generic", version, input_hash)
-        if not qor["timing"]["setup_pass"]:
+        timing = qor["timing"]
+        if profile not in COMPOSITE_SYNTH_PROFILES and not timing["setup_pass"]:
             raise FlowError(
                 f"Synthesis setup timing failed for {profile}: "
-                f"WNS={qor['timing']['wns_ns']} ns, TNS={qor['timing']['tns_ns']} ns."
+                f"WNS={timing['wns_ns']} ns, TNS={timing['tns_ns']} ns."
             )
 
     outputs = output_manifest(name, root, part, profile)
@@ -549,6 +672,8 @@ def run_stage(name: str, command: list[str], vivado: Path,
         "stage": name,
         "profile": profile,
         "input_partition_version": INPUT_PARTITION_VERSION,
+        "product_version": PRODUCT_VERSION,
+        "python_version": sys.version.split()[0] if name == "sim" else None,
         "completed_at_utc": now(),
         "input_sha256": input_hash,
         "inputs": inputs,
@@ -571,6 +696,7 @@ def command_sim(_: argparse.Namespace) -> None:
     script = ROOT / "tools/run_video_tests.sh"
     env = os.environ.copy()
     env["VIVADO_BIN"] = str(vivado.parent)
+    env["PYTHON_BIN"] = sys.executable
     inputs = input_manifest("sim")
     run_stage(
         "sim", [str(script)], vivado, inputs, tool_version=version,
@@ -582,14 +708,15 @@ def command_package(args: argparse.Namespace, validate: bool = False) -> None:
     vivado = resolve_vivado(args.vivado)
     version = vivado_version(vivado)
     package = [
-        str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/package_ip.tcl"),
+        str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/package_all.tcl"),
         "-tclargs", str(ROOT), str(ROOT / "ip_repo"),
+        str(ROOT / "out/package_composite_project"),
     ]
     package_env = os.environ.copy()
     package_env["VIDEO_IP_PACKAGE_WORK_DIR"] = str(ROOT / "out/package_project_static_profile")
     run_stage(
         "package", package, vivado, input_manifest("package"),
-        tool_version=version, env=package_env, success_marker="VIDEO_IP_PACKAGE_PASS",
+        tool_version=version, env=package_env, success_marker="EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS",
     )
     if validate:
         validation = [
@@ -600,7 +727,7 @@ def command_package(args: argparse.Namespace, validate: bool = False) -> None:
         ]
         run_stage(
             "ip_catalog", validation, vivado, input_manifest("ip_catalog"),
-            tool_version=version, success_marker="VIDEO_IP_CATALOG_PASS",
+            tool_version=version, success_marker="EMBEDDED_VIDEO_IP_CATALOG_PASS",
         )
 
 
@@ -612,14 +739,27 @@ def command_synth(args: argparse.Namespace) -> None:
     generics = synth_profile_generics(profile)
     output_dir = synth_profile_output_dir(part, profile)
     generic_args = [f"{name}={value}" for name, value in generics.items()]
-    command = [
-        str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/synth_core.tcl"),
-        "-tclargs", str(ROOT), part, str(output_dir), profile, *generic_args,
-    ]
+    if profile in COMPOSITE_SYNTH_PROFILES:
+        script = ROOT / "tools/synth_composite.tcl"
+        command = [
+            str(vivado), "-mode", "batch", "-source", str(script),
+            "-tclargs", str(ROOT), str(ROOT / "ip_repo"), part,
+            str(output_dir), profile, *generic_args,
+        ]
+    else:
+        script = ROOT / "tools/synth_core.tcl"
+        command = [
+            str(vivado), "-mode", "batch", "-source", str(script),
+            "-tclargs", str(ROOT), part, str(output_dir), profile, *generic_args,
+        ]
+    success_marker = (
+        "EMBEDDED_VIDEO_IP_SYNTH_PASS"
+        if profile in COMPOSITE_SYNTH_PROFILES else "VIDEO_SYNTH_PASS"
+    )
     run_stage(
-        "synth", command, vivado, input_manifest("synth"),
+        "synth", command, vivado, input_manifest("synth", profile=profile),
         part, tool_version=version, profile=profile,
-        success_marker="VIDEO_SYNTH_PASS",
+        success_marker=success_marker,
     )
 
 
@@ -648,7 +788,7 @@ def command_status(_: argparse.Namespace) -> None:
                 print(f"{stage_key}: stale (unknown profile)")
                 continue
         try:
-            current = input_manifest(stage, ROOT)
+            current = input_manifest(stage, ROOT, profile=profile)
             expected = fingerprint(current, version, stage, part, profile)
             state = (
                 "fresh" if version and stage_cache_valid(

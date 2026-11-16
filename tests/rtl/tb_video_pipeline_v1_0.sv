@@ -18,6 +18,9 @@ module tb_video_pipeline_v1_0;
   wire [23:0] video_data;
   wire video_valid, video_user, video_last;
   logic video_ready=1;
+  wire hdmi_audio_enable, audio_mute;
+  wire [16:0] audio_gain_q15;
+  logic audio_underflow=0, audio_overflow=0;
 
   logic [5:0] awaddr=0, araddr=0;
   logic awvalid=0, wvalid=0, bready=0, arvalid=0, rready=0;
@@ -38,7 +41,7 @@ module tb_video_pipeline_v1_0;
   video_pipeline_v1_0 #(
     .MAX_INPUT_WIDTH(4),.MAX_INPUT_HEIGHT(4),
     .OUTPUT_WIDTH(4),.OUTPUT_HEIGHT(4),
-    .BRAM_ADDR_WIDTH(4),.AXI_ADDR_WIDTH(6)
+    .BRAM_ADDR_WIDTH(4),.AXI_ADDR_WIDTH(6),.ENABLE_HDMI_AUDIO(1)
   ) dut (
     .aclk(clk),.aresetn(rst_n),
     .bram_en(bram_en),.bram_addr(bram_addr),.bram_dout(bram_dout),
@@ -53,7 +56,9 @@ module tb_video_pipeline_v1_0;
     .s_axi_wdata(wdata),.s_axi_wstrb(wstrb),.s_axi_wvalid(wvalid),.s_axi_wready(wready),
     .s_axi_bresp(bresp),.s_axi_bvalid(bvalid),.s_axi_bready(bready),
     .s_axi_araddr(araddr),.s_axi_arvalid(arvalid),.s_axi_arready(arready),
-    .s_axi_rdata(rdata),.s_axi_rresp(rresp),.s_axi_rvalid(rvalid),.s_axi_rready(rready)
+    .s_axi_rdata(rdata),.s_axi_rresp(rresp),.s_axi_rvalid(rvalid),.s_axi_rready(rready),
+    .hdmi_audio_enable(hdmi_audio_enable),.audio_mute(audio_mute),
+    .audio_gain_q15(audio_gain_q15),.audio_underflow(audio_underflow),.audio_overflow(audio_overflow)
   );
 
   always @(posedge clk) begin
@@ -65,16 +70,16 @@ module tb_video_pipeline_v1_0;
       bram_done_seen <= 1'b1;
     if(video_valid && !video_ready) begin
       if(stalled && ((video_data!==held_data)||(video_user!==held_user)||(video_last!==held_last)))
-        $fatal(1,"TEST_FAIL: top output changed under backpressure");
+        $fatal(1,"TEST_FAIL: top output changed under 下游背压");
       stalled<=1;
       held_data<=video_data; held_user<=video_user; held_last<=video_last;
     end else if(video_valid && video_ready) begin
       stalled<=0;
-      if(output_index>=16) $fatal(1,"TEST_FAIL: top emitted extra pixel");
+      if(output_index>=16) $fatal(1,"TEST_FAIL: 顶层输出了多余像素");
       if(video_data!==expected[output_index])
-        $fatal(1,"TEST_FAIL: top pixel %0d got %h expected %h",output_index,video_data,expected[output_index]);
-      if(video_user!==(output_index==0)) $fatal(1,"TEST_FAIL: top SOF mismatch");
-      if(video_last!==((output_index%4)==3)) $fatal(1,"TEST_FAIL: top EOL mismatch");
+        $fatal(1,"TEST_FAIL: 顶层像素%0d为%h，预期为%h",output_index,video_data,expected[output_index]);
+      if(video_user!==(output_index==0)) $fatal(1,"TEST_FAIL: 顶层帧首标记不匹配");
+      if(video_last!==((output_index%4)==3)) $fatal(1,"TEST_FAIL: 顶层行尾标记不匹配");
       output_index<=output_index+1;
     end
   end
@@ -144,7 +149,7 @@ module tb_video_pipeline_v1_0;
 
   task automatic send_xrgb_vdma_frame;
     begin
-      // XRGB memory pixels are numeric 0x00RRGGBB; output AXI video must be RBG.
+      // XRGB内存像素按0x00RRGGBB表示；AXI视频输出按RBG顺序打包。
       send_pixel(24'h112233,1,0);
       send_pixel(24'h445566,0,1);
       send_pixel(24'h778899,0,0);
@@ -164,7 +169,7 @@ module tb_video_pipeline_v1_0;
   logic [31:0] readback;
   initial begin
     #1ms;
-    $fatal(1,"TEST_FAIL: top watchdog timeout");
+    $fatal(1,"TEST_FAIL: 顶层看门狗超时");
   end
 
   initial begin
@@ -179,33 +184,33 @@ module tb_video_pipeline_v1_0;
 
     repeat(4) @(negedge clk);
     rst_n=1;
-    // W first, then AW: AXI-Lite write channels are independently accepted.
+    // 先写W再写AW，验证AXI-Lite写通道可独立握手。
     axi_write(6'h04,32'h0002_0002,0);
     axi_write(6'h1c,32'h0004_0004,1);
     axi_write(6'h20,32'h0000_0000,0);
     axi_write(6'h24,32'h0000_0000,1);
     axi_write(6'h28,32'h0002_0000,0);
     axi_write(6'h2c,32'h0002_0000,1);
-    // AW first, then W, plus commit/source/format/scale/enable.
+    // 先写AW再写W，并提交源、格式、缩放和使能配置。
     axi_write(6'h00,32'h0000_013d,1);
     axi_read(6'h04,readback);
-    if(readback!==32'h0002_0002) $fatal(1,"TEST_FAIL: AXI-Lite geometry readback mismatch %h",readback);
+    if(readback!==32'h0002_0002) $fatal(1,"TEST_FAIL: AXI-Lite尺寸读回值不匹配：%h",readback);
     repeat(4) @(negedge clk);
     send_frame();
     wait(dut.cfg_frame_count==1);
-    if(output_index!=16) $fatal(1,"TEST_FAIL: top output count %0d",output_index);
+    if(output_index!=16) $fatal(1,"TEST_FAIL: 顶层输出像素数为%0d",output_index);
     axi_read(6'h10,readback);
-    if(readback[7:6]!==2'd2) $fatal(1,"TEST_FAIL: active source was not VDMA (%h)",readback);
+    if(readback[7:6]!==2'd2) $fatal(1,"TEST_FAIL: 活动视频源不是VDMA：%h",readback);
 
-    // HLS enters through the same AXI4-Stream Video source mux.
+    // HLS视频源通过相同的AXI4-Stream Video源选择器输入。
     @(negedge clk); output_index=0;
-    axi_write(6'h00,32'h0000_013b,0); // HLS source, RGB888, nearest/stretch, commit+enable
+    axi_write(6'h00,32'h0000_013b,0); // HLS源、RGB888、最近邻/拉伸、提交并使能
     repeat(4) @(negedge clk);
     send_hls_frame();
     wait(dut.cfg_frame_count==2);
-    if(output_index!=16) $fatal(1,"TEST_FAIL: HLS source output count %0d",output_index);
+    if(output_index!=16) $fatal(1,"TEST_FAIL: HLS源输出像素数为%0d",output_index);
     axi_read(6'h10,readback);
-    if(readback[7:6]!==2'd1) $fatal(1,"TEST_FAIL: active source was not HLS (%h)",readback);
+    if(readback[7:6]!==2'd1) $fatal(1,"TEST_FAIL: 活动视频源不是HLS：%h",readback);
 
     // XRGB memory containers are RGB internally; the public stream output is RBG.
     expected[0]=24'h113322; expected[1]=24'h113322; expected[2]=24'h446655; expected[3]=24'h446655;
@@ -213,15 +218,15 @@ module tb_video_pipeline_v1_0;
     expected[8]=24'h779988; expected[9]=24'h779988; expected[10]=24'hAACCBB; expected[11]=24'hAACCBB;
     expected[12]=24'h779988; expected[13]=24'h779988; expected[14]=24'hAACCBB; expected[15]=24'hAACCBB;
     @(negedge clk); output_index=0;
-    axi_write(6'h00,32'h0000_014d,1); // VDMA source with XRGB8888 memory format
+    axi_write(6'h00,32'h0000_014d,1); // VDMA源使用XRGB8888内存格式
     repeat(4) @(negedge clk);
     send_xrgb_vdma_frame();
     wait(dut.cfg_frame_count==3);
-    if(output_index!=16) $fatal(1,"TEST_FAIL: XRGB VDMA source output count %0d",output_index);
+    if(output_index!=16) $fatal(1,"TEST_FAIL: XRGB VDMA源输出像素数为%0d",output_index);
     axi_read(6'h10,readback);
-    if(readback[7:6]!==2'd2) $fatal(1,"TEST_FAIL: active source was not XRGB VDMA (%h)",readback);
+    if(readback[7:6]!==2'd2) $fatal(1,"TEST_FAIL: 活动视频源不是XRGB VDMA：%h",readback);
 
-    // BRAM source unpacks two RGB565 pixels per synchronous 32-bit word.
+    // BRAM读取器从一个同步32-bit字中拆出两个RGB565像素。
     expected[0]=24'hFF0000; expected[1]=24'hFF0000; expected[2]=24'h0000FF; expected[3]=24'h0000FF;
     expected[4]=24'hFF0000; expected[5]=24'hFF0000; expected[6]=24'h0000FF; expected[7]=24'h0000FF;
     expected[8]=24'h00FF00; expected[9]=24'h00FF00; expected[10]=24'hFFFFFF; expected[11]=24'hFFFFFF;
@@ -229,14 +234,38 @@ module tb_video_pipeline_v1_0;
     @(negedge clk); output_index=0;
     axi_write(6'h08,32'd4,1);
     axi_write(6'h0c,32'd0,0);
-    axi_write(6'h00,32'h0000_0339,1); // BRAM source plus one-frame request and commit
+    axi_write(6'h00,32'h0000_0339,1); // BRAM源、单帧读取请求并提交
     repeat(4) @(negedge clk);
     wait(dut.cfg_frame_count==4);
-    if(output_index!=16 || !bram_done_seen) $fatal(1,"TEST_FAIL: BRAM source output/status mismatch");
+    if(output_index!=16 || !bram_done_seen) $fatal(1,"TEST_FAIL: BRAM源输出或状态不匹配");
     axi_read(6'h10,readback);
-    if(readback[7:6]!==2'd0) $fatal(1,"TEST_FAIL: active source was not BRAM (%h)",readback);
+    if(readback[7:6]!==2'd0) $fatal(1,"TEST_FAIL: 活动视频源不是BRAM：%h",readback);
     axi_read(6'h18,readback);
-    if(readback!==0) $fatal(1,"TEST_FAIL: unexpected top error %h",readback);
+    if(readback!==0) $fatal(1,"TEST_FAIL: 顶层出现意外错误：%h",readback);
+
+    // HDMI音频控制与视频核共用AXI-Lite地址空间。
+    axi_read(6'h38, readback);
+    if (readback !== 32'd32768 || audio_gain_q15 !== 17'd32768)
+      $fatal(1, "TEST_FAIL: HDMI音频增益复位值不匹配");
+    axi_write(6'h34, 32'd3, 1); // 使能HDMI音频并静音
+    if (hdmi_audio_enable !== 1'b1 || audio_mute !== 1'b1)
+      $fatal(1, "TEST_FAIL: HDMI音频使能/静音控制不匹配");
+    axi_write(6'h34, 32'd1, 0);
+    if (hdmi_audio_enable !== 1'b1 || audio_mute !== 1'b0)
+      $fatal(1, "TEST_FAIL: 修改静音时改变了HDMI音频使能");
+    axi_write(6'h38, 32'd40000, 1);
+    axi_read(6'h38, readback);
+    if (readback !== 32'd32768 || audio_gain_q15 !== 17'd32768)
+      $fatal(1, "TEST_FAIL: HDMI音频增益未饱和到unity");
+    @(negedge clk); audio_underflow = 1'b1; audio_overflow = 1'b1;
+    @(negedge clk); audio_underflow = 1'b0; audio_overflow = 1'b0;
+    axi_read(6'h3c, readback);
+    if (readback[2:0] !== 3'b111)
+      $fatal(1, "TEST_FAIL: HDMI音频状态未锁存使能/欠载/溢出");
+    axi_write(6'h00, 32'h0000_0400, 1); // 通过CTRL bit10清除音频sticky状态
+    axi_read(6'h3c, readback);
+    if (readback[2:0] !== 3'b001)
+      $fatal(1, "TEST_FAIL: CTRL清错未清除音频FIFO状态");
 
     $display("TEST_PASS: tb_video_pipeline_v1_0");
     $finish;

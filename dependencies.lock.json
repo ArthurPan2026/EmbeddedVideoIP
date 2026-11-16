@@ -1,13 +1,29 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "vivado": "2025.2.1",
   "dependencies": [
     {
       "name": "digilent-vivado-library",
       "url": "https://github.com/Digilent/vivado-library.git",
       "commit": "f4613fff005b098065fd5d619a2b88e55720a423",
-      "ip": "digilentinc.com:ip:rgb2dvi:1.4",
-      "families": ["7-series"]
+      "families": [
+        "7-series"
+      ],
+      "files": [
+        {
+          "path": "third_party/digilent-rgb2dvi/DVI_Constants.vhd",
+          "sha256": "d8dbbbc3c8696d4527ee0d3c4757f1a40d0acebc845899483bc61c2bb8270cde"
+        },
+        {
+          "path": "third_party/digilent-rgb2dvi/OutputSERDES.vhd",
+          "sha256": "6205d58405919d4f899a525256e2cafa725408f6644642755cd0de63e69b286e"
+        },
+        {
+          "path": "third_party/digilent-rgb2dvi/TMDS_Encoder.vhd",
+          "sha256": "b047a257c1172412d1b354a98e3cc77d013d0f3c1af6ff646233abf8b669c196"
+        }
+      ]
     }
-  ]
+  ],
+  "project_version": "0.2.0-dev.1"
 }

@@ -1,7 +1,7 @@
-# AMD 7-series board adapter
+# AMD 7-series 板级适配
 
-The V1 board-tested integration profile is Zybo Z7-20 (XC7Z020). The portable video pipeline IP and PS C library are paired with the AMD AXI VDMA, VTC, AXI4-Stream video-out, clock wizard, and Digilent rgb2dvi 1.4.
+V1 板级验证 profile 为 Zybo Z7-20（XC7Z020）。组合式 EmbeddedVideoIP 使用 PS FCLK1 100 MHz 作为 AXI/视频控制时钟，使用 PS FCLK0 50 MHz 作为 HDMI 时钟参考；当前 MMCM 配置输出约 25.178571 MHz 像素时钟和 125.892857 MHz TMDS 串行时钟。
 
-The consumer project owns its block-design assembly, PS clock/reset, EDID/HPD, VDMA frame buffers, and deployment flow. It imports the packaged IP from this repository and connects those platform resources to the reusable stream core.
+Composite 内部包含 AXI4-Stream 视频输出桥、VTC 和 7-series HDMI 发送器。消费工程连接 PS/DDR、AXI VDMA 和时钟/复位。EmbeddedVideoIP 只输出 TMDS；HPD/DDC 由消费工程接到 PS GPIO/IIC。外部 VDMA 的 MM2S AXI4-Stream 接入 `s_axis_vdma`。
 
-The Digilent rgb2dvi 1.4 PHY uses 7-series OSERDES/MMCM primitives. Other Vivado families may use the portable AXI4-Stream core and the matched PS API, but require a family-appropriate HDMI PHY/clock adapter. This is a platform boundary, not a project-specific change to the video core.
+HDMI TX 复用 Digilent `TMDS_Encoder`、`OutputSERDES` 和 `DVI_Constants` 7-series 源码，并由 EmbeddedVideoIP 自有逻辑生成音频数据岛与 InfoFrame。`ENABLE_HDMI_AUDIO=0` 时静态裁剪音频逻辑。新增 HDMI 音频当前只通过 RTL/XSim 覆盖，尚未完成 HDMI 认证或正式板级音频验收。其他器件系列需配置匹配的 HDMI PHY、时钟并完成实板验证后再列入支持范围。

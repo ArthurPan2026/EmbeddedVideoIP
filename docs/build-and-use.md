@@ -1,33 +1,61 @@
-# Build and use
+# 构建与使用
 
-For first use, follow [PL+PS quick start](quickstart-zh.md). V1 is a paired Vivado IP and PS C library. The only turnkey board profile currently validated on hardware is Zybo Z7-20.
+首次使用请先读[PL+PS 快速上手](quickstart-zh.md)和[组合式顶层接口](composite-ip-api.md)。自动验证与验收记录见[验证流程](validation.md)。消费者在 Vivado BD 中只实例化 `panfpga.org:video:embedded_video_ip:1.0`，PS 侧安装同版本 C 库。
 
-## Requirements
+## 工具与依赖
 
-- Vivado 2025.2.1 for the current Zybo reference profile (or the exact Vivado version pinned by the consumer).
-- Digilent Vivado Library at the revision in dependencies.lock.json.
-- The consumer's matching Vitis/BSP version and target-device definition.
+项目与配套 PS 库版本取自 VERSION 文件，当前为 0.2.0-dev.1。外部 EmbeddedVideoIP VLNV 保持 panfpga.org:video:embedded_video_ip:1.0。
 
-## Build, validate, and package
+- 当前 Zybo Z7-20 profile 固定 Vivado/Vitis 2025.2.1。
+- Digilent `TMDS_Encoder`、`DVI_Constants` 和 `OutputSERDES` 源码的来源提交与哈希固定在 `dependencies.lock.json`。
+- `video_flow.py` 使用 Python 3；XSim/C 回归需要 Vivado、GCC 和 Python unittest。
 
-    python3 tools/video_flow.py doctor
-    python3 tools/video_flow.py build --part xc7z020clg400-1
+## 分阶段命令
 
-The build command runs XSim regressions and host API tests, packages the IP-XACT core into the versioned ip_repo/ directory, instantiates it in a Vivado IP Integrator validation design, and synthesizes it for the requested device. Reports and temporary projects are stored under out/ with input/output hashes in out/manifest.json.
+```sh
+python3 tools/video_flow.py doctor
+python3 tools/video_flow.py sim
+python3 tools/video_flow.py package
+python3 tools/video_flow.py validate
+python3 tools/video_flow.py synth --part xc7z020clg400-1 --profile vdma_scaler_bram
+python3 tools/video_flow.py synth --part xc7z020clg400-1 --profile composite_audio_off
+python3 tools/video_flow.py synth --part xc7z020clg400-1 --profile composite_audio_on
+python3 tools/video_flow.py status
+```
 
-Run the stages separately with `video_flow.py sim`, `package`, `validate`, and `synth`. Use `status` to check whether a previous output still matches the current source fingerprint. A consumer project connects the core to its VTC, AXI VDMA, clock, and output-transmitter IP, then supplies its own board deployment flow.
+`doctor` 检查 Vivado 版本。`sim` 运行 XSim 视频/音频 RTL 测试、PS C API 主机测试和库安装器回归。`package` 先生成内部视频处理核，再生成唯一的 `panfpga.org:video:embedded_video_ip:1.0` IP-XACT 包。`validate` 在 Vivado IP Catalog 中实例化组合式 EmbeddedVideoIP，并验证端口、地址映射和参数。`synth` 对指定器件和静态 profile 做 OOC 综合。
 
-The synthesis profiles `vdma_scaler_lutram` and `vdma_scaler_bram` use the same source path and dimensions. They differ only in the scaler line-buffer implementation. Select the profile that matches the target device's LUTRAM and BRAM budget. The consumer can set its own IP parameters in its Vivado block design.
+`build` 顺序运行 `sim → package → validate → synth`：
 
-## Configure from PS
+```sh
+python3 tools/video_flow.py build --part xc7z020clg400-1 --profile vdma_scaler_bram
+```
 
-Install the matching API and Zynq-7000 adapter with `python3 tools/install_ps_library.py --app-src /path/to/vitis_app/src --platform zynq7000`. The installer copies the versioned sources and registers them in `UserConfig.cmake`.
+构建使用内容 SHA-256 指纹。只有阶段输入、Vivado 版本和目标参数相同且所有输出哈希匹配时才命中缓存。阶段日志、利用率/时序报告和 `qor.json` 保存在 `out/`；失败阶段不会覆盖最后一次成功记录。 Composite profile 的时序报告是预布线 OOC 数据，不作为板级签核；最终时序以消费工程的 post-route STA 为准。
 
-The paired PS C library is in software/video_out.c and software/video_out.h. Its geometry calculator is host-testable and its Xilinx Zynq-7000 adapter supplies MMIO and AXI VDMA setup. The API computes fit/stretch active dimensions and DDA ratios, then programs the core and VDMA. Use the driver sequence:
+## 综合 profile
 
-1. configure the selected source geometry/format and scale mode;
-2. configure the native VDMA frame buffer addresses, HSIZE, VSIZE, and STRIDE when using DDR;
-3. commit at a frame boundary and enable the stream;
-4. poll status/error counters during bring-up.
+当前视频 profile 用于选择 scaler 和行缓冲：
 
-The consumer project selects a library release, sets the IP parameters in its block design, and configures the PS API for its input format and memory layout. Keep consumer-specific build, bitstream, and deployment commands in that project.
+| Profile | 配置 | 用途 |
+|---|---|---|
+| `generic` | 保留运行时源/格式选择，启用 scaler | 通用基线 |
+| `vdma_scaler_lutram` | 固定 VDMA/XRGB，最近邻 scaler 使用 LUTRAM | BRAM 紧张时 |
+| `vdma_scaler_bram` | 固定 VDMA/XRGB，最近邻 scaler 使用同步 BRAM | LUT 紧张时 |
+| `passthrough` | 固定 VDMA/XRGB，静态关闭 scaler | 不需要缩放时 |
+| `composite_audio_off` | Zybo 参考 profile，静态关闭 HDMI 音频 | 检查音频逻辑能否裁掉 |
+| `composite_audio_on` | 相同视频 profile，启用 HDMI 音频 | 对比音频逻辑的资源开销 |
+
+音频 profile 使用同一个 EmbeddedVideoIP VLNV，只改变静态参数 `ENABLE_HDMI_AUDIO`。关闭音频时，综合应裁掉 PCM FIFO、HDMI 音频格式化和 packetizer；打开时支持双声道 48 kHz PCM。`validate` 和 OOC 综合分别覆盖音频开关，并记录资源与时序报告。
+
+## 封装结构
+
+- `ip/video_pipeline_1_0/hdl/`：唯一 canonical RTL 源码。
+- `tools/package_ip.tcl`：生成内部视频处理核。
+- `tools/package_composite_ip.tcl`：在一个 RTL 顶层 IP 中组合内部视频核、固定视频输出 BD、时钟与 7-series HDMI TX。
+- `ip_repo/`：Vivado IP Catalog 生成包，只由 packaging stage 写入。
+- `software/`：平台无关 PS C API。
+- `software/platforms/xilinx_zynq7000/`：Zynq-7000 VDMA/MMIO adapter；HDMI 音频控制 API 复用同一个 AXI-Lite 接口。
+- `platforms/amd_7series/`：Zybo Z7-20 时钟、I/O 和支持矩阵。
+
+消费者只实例化一个 EmbeddedVideoIP 顶层。PS/CIPS 和 DDR memory controller 仍属于消费系统；消费工程连接 VDMA/HLS/BRAM 源、PCM AXI-Stream、单一 AXI-Lite 控制口和 TMDS 引脚。HPD/DDC 由消费系统单独接到 PS GPIO/IIC。

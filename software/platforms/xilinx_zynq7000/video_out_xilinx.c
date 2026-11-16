@@ -147,3 +147,40 @@ int VideoOutXilinx_Configure(VideoOutXilinx *adapter,
     return VideoOut_Configure(&io, config, adapter->frame_base,
                               vdma_bytes_per_pixel);
 }
+
+int VideoOutXilinx_SetHdmiAudioEnabled(VideoOutXilinx *adapter, uint8_t enabled)
+{
+    VideoOutIo io;
+    if (adapter == 0)
+        return -1;
+    io = VideoOutXilinx_GetIo(adapter);
+    return VideoOut_SetHdmiAudioEnabled(&io, enabled);
+}
+
+int VideoOutXilinx_SetAudioMute(VideoOutXilinx *adapter, uint8_t muted)
+{
+    VideoOutIo io;
+    if (adapter == 0)
+        return -1;
+    io = VideoOutXilinx_GetIo(adapter);
+    return VideoOut_SetAudioMute(&io, muted);
+}
+
+int VideoOutXilinx_SetAudioGainQ15(VideoOutXilinx *adapter, uint32_t gain_q15)
+{
+    VideoOutIo io;
+    if (adapter == 0)
+        return -1;
+    io = VideoOutXilinx_GetIo(adapter);
+    return VideoOut_SetAudioGainQ15(&io, gain_q15);
+}
+
+int VideoOutXilinx_GetAudioStatus(VideoOutXilinx *adapter,
+                                  VideoOutAudioStatus *status)
+{
+    VideoOutIo io;
+    if (adapter == 0)
+        return -1;
+    io = VideoOutXilinx_GetIo(adapter);
+    return VideoOut_GetAudioStatus(&io, status);
+}

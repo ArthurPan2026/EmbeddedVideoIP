@@ -21,7 +21,8 @@ module video_pipeline_v1_0 #(
   // 0 creates a frame-aware AXI-Stream straight-through path with no scaler.
   parameter int unsigned ENABLE_SCALER = 1,
   // 0 uses LUTRAM for the scaler line store; 1 uses synchronous BRAM.
-  parameter int unsigned LINE_BUFFER_IMPLEMENTATION = 0
+  parameter int unsigned LINE_BUFFER_IMPLEMENTATION = 0,
+  parameter int unsigned ENABLE_HDMI_AUDIO = 0
 ) (
   input logic aclk, input logic aresetn,
 
@@ -69,7 +70,14 @@ module video_pipeline_v1_0 #(
   output logic [31:0] s_axi_rdata,
   output logic [1:0] s_axi_rresp,
   output logic s_axi_rvalid,
-  input logic s_axi_rready
+  input logic s_axi_rready,
+
+  // HDMI audio control/status is routed to the composite transmitter.
+  output logic hdmi_audio_enable,
+  output logic audio_mute,
+  output logic [16:0] audio_gain_q15,
+  input logic audio_underflow,
+  input logic audio_overflow
 );
   logic cfg_enable, cfg_scale, cfg_stretch;
   logic [1:0] cfg_source, cfg_format;
@@ -115,7 +123,7 @@ module video_pipeline_v1_0 #(
       (ENABLE_BRAM_SOURCE != 0) ? 2'd0 :
       (ENABLE_HLS_SOURCE != 0) ? 2'd1 : 2'd2;
 
-  axi_lite_video_regs #(.ADDR_WIDTH(AXI_ADDR_WIDTH)) u_regs (
+  axi_lite_video_regs #(.ADDR_WIDTH(AXI_ADDR_WIDTH), .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO)) u_regs (
     .aclk(aclk), .aresetn(aresetn),
     .s_axi_awaddr(s_axi_awaddr), .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
     .s_axi_wdata(s_axi_wdata), .s_axi_wstrb(s_axi_wstrb), .s_axi_wvalid(s_axi_wvalid), .s_axi_wready(s_axi_wready),
@@ -134,7 +142,10 @@ module video_pipeline_v1_0 #(
     .cfg_pending(cfg_pending), .stream_hold(stream_hold), .active_enable(active_enable),
     .busy(cfg_busy), .bram_busy(bram_busy), .active_source(active_source),
     .active_width(measured_active_width), .active_height(measured_active_height),
-    .frame_count(cfg_frame_count), .error_flags(cfg_error_flags)
+    .frame_count(cfg_frame_count), .error_flags(cfg_error_flags),
+    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
+    .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
+    .audio_overflow(audio_overflow)
   );
 
   always_comb begin

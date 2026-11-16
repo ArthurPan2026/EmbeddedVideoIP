@@ -29,11 +29,15 @@ Hold  :            0  Failing Endpoints,  Worst Slack        0.100ns,  Total Vio
 """
 
 
-def write_synth_fixture(output_dir: Path, name: str = "fixture") -> None:
+def write_synth_fixture(output_dir: Path, name: str = "fixture",
+                        checkpoint_name: str = "video_pipeline.dcp",
+                        timing_report: str = TIMING_FIXTURE) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "utilization.rpt").write_text(UTILIZATION_FIXTURE, encoding="utf-8")
-    (output_dir / "timing_summary.rpt").write_text(TIMING_FIXTURE, encoding="utf-8")
-    (output_dir / "video_pipeline.dcp").write_bytes(f"dcp-{name}".encode("ascii"))
+    (output_dir / "timing_summary.rpt").write_text(timing_report, encoding="utf-8")
+    (output_dir / "clock_interaction.rpt").write_text("clock interaction fixture\n", encoding="utf-8")
+    (output_dir / "ignored_timing_exceptions.rpt").write_text("ignored exceptions fixture\n", encoding="utf-8")
+    (output_dir / checkpoint_name).write_bytes(f"dcp-{name}".encode("ascii"))
 
 
 class VideoFlowProfileTests(unittest.TestCase):
@@ -73,6 +77,19 @@ class VideoFlowProfileTests(unittest.TestCase):
         self.assertEqual(passthrough["OUTPUT_HEIGHT"], 480)
         self.assertEqual(passthrough["ENABLE_SCALER"], 0)
         self.assertNotIn("MAX_SCALER_INPUT_WIDTH", passthrough)
+
+        audio_off = video_flow.synth_profile_generics("composite_audio_off")
+        audio_on = video_flow.synth_profile_generics("composite_audio_on")
+        self.assertEqual(audio_off["ENABLE_HDMI_AUDIO"], 0)
+        self.assertEqual(audio_on["ENABLE_HDMI_AUDIO"], 1)
+        self.assertEqual(audio_off["MAX_SCALER_INPUT_WIDTH"], 240)
+        self.assertEqual(audio_off["MAX_SCALER_INPUT_HEIGHT"], 160)
+        self.assertEqual(
+            {key: value for key, value in audio_off.items() if key != "ENABLE_HDMI_AUDIO"},
+            {key: value for key, value in audio_on.items() if key != "ENABLE_HDMI_AUDIO"},
+        )
+        self.assertEqual(video_flow.synth_checkpoint_name("composite_audio_on"), "embedded_video_ip.dcp")
+        self.assertEqual(video_flow.synth_checkpoint_name("vdma_scaler_lutram"), "video_pipeline.dcp")
 
         with self.assertRaises(video_flow.FlowError):
             video_flow.synth_profile_generics("unknown")
@@ -122,6 +139,53 @@ class VideoFlowProfileTests(unittest.TestCase):
         self.assertIn("ENABLE_SCALER=1", forwarded)
         self.assertIn("LINE_BUFFER_IMPLEMENTATION=0", forwarded)
         self.assertEqual(run_stage.call_args.kwargs["profile"], "vdma_scaler_lutram")
+
+    def test_command_synth_uses_composite_script_and_audio_static_parameter(self) -> None:
+        vivado = Path("/fake/vivado")
+        args = SimpleNamespace(vivado=str(vivado), part="xc7z020clg400-1", profile="composite_audio_on")
+        with patch.object(video_flow, "resolve_vivado", return_value=vivado), patch.object(video_flow, "vivado_version", return_value="2025.2.1"), patch.object(video_flow, "input_manifest", return_value={"rtl": "sha"}), patch.object(video_flow, "run_stage") as run_stage:
+            video_flow.command_synth(args)
+
+        command = run_stage.call_args.args[1]
+        self.assertTrue(any("synth_composite.tcl" in arg for arg in command))
+        self.assertIn("profiles/composite_audio_on", command[command.index("-tclargs") + 4])
+        self.assertIn("ENABLE_HDMI_AUDIO=1", command)
+        self.assertEqual(run_stage.call_args.kwargs["success_marker"], "EMBEDDED_VIDEO_IP_SYNTH_PASS")
+
+    def test_composite_ooc_timing_is_recorded_without_signoff_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = "xc7z020clg400-1"
+            profile = "composite_audio_off"
+            timing = TIMING_FIXTURE.replace(
+                "0.100        0.000                      0                   10",
+                "-2.182       -4.365                      2                   10",
+            ).replace(
+                "Hold  :            0  Failing Endpoints,  Worst Slack        0.100ns,  Total Violation        0.000ns",
+                "Hold  :            2  Failing Endpoints,  Worst Slack       -2.182ns,  Total Violation       -4.365ns",
+            )
+
+            def runner(command, cwd, text, capture_output, check, env):
+                output_dir = video_flow.synth_profile_output_dir(part, profile, root)
+                write_synth_fixture(
+                    output_dir, profile, "embedded_video_ip.dcp", timing
+                )
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="EMBEDDED_VIDEO_IP_SYNTH_PASS: profile=composite_audio_off\n",
+                    stderr="",
+                )
+
+            video_flow.run_stage(
+                "synth", ["vivado", "synth_composite.tcl"], Path("/fake/vivado"),
+                {"package": "sha"}, part, root=root, tool_version="2025.2.1",
+                profile=profile, runner=runner,
+                success_marker="EMBEDDED_VIDEO_IP_SYNTH_PASS",
+            )
+            record = video_flow.read_manifest(root)["stages"]["synth:composite_audio_off"]
+            self.assertFalse(record["qor"]["timing"]["hold_pass"])
+            self.assertFalse(record["qor"]["timing_signoff"])
+            self.assertIn("pre-route OOC", record["qor"]["timing_scope"])
 
     def test_profiles_use_independent_cache_keys_and_output_directories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -183,8 +247,11 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
         files = [
             "tools/video_flow.py",
             "tools/package_ip.tcl",
+            "tools/package_composite_ip.tcl",
+            "tools/package_all.tcl",
             "tools/validate_ip_catalog.tcl",
             "tools/synth_core.tcl",
+            "tools/synth_composite.tcl",
             "tools/run_video_tests.sh",
             "tools/install_ps_library.py",
             "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv",
@@ -194,6 +261,30 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv",
             "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv",
             "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v",
+            "ip/video_pipeline_1_0/hdl/embedded_video_ip_top.v",
+            "ip/video_pipeline_1_0/constraints/embedded_video_ip_async_clock_groups.xdc",
+            "ip/video_pipeline_1_0/hdl/audio_event_pulse_sync.sv",
+            "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv",
+            "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv",
+            "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv",
+            "ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_tmds_symbol_encoder.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv",
+            "third_party/digilent-rgb2dvi/NOTICE.md",
+            "third_party/digilent-rgb2dvi/OutputSERDES.vhd",
+            "third_party/digilent-rgb2dvi/DVI_Constants.vhd",
+            "third_party/digilent-rgb2dvi/TMDS_Encoder.vhd",
+            "dependencies.lock.json",
+            "NOTICE.md",
             "software/video_out.c",
             "software/video_out.h",
             "software/platforms/xilinx_zynq7000/video_out_xilinx.c",
@@ -204,6 +295,15 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "tests/rtl/tb_video_bram_rgb565_reader.sv",
             "tests/rtl/tb_video_pipeline_v1_0.sv",
             "tests/rtl/tb_video_pipeline_static_profile.sv",
+            "tests/rtl/tb_hdmi_primitives.sv",
+            "tests/rtl/tb_hdmi_audio_packets.sv",
+            "tests/rtl/tb_audio_pcm_async_fifo.sv",
+            "tests/rtl/tb_hdmi_packet_assembler.sv",
+            "tests/rtl/tb_hdmi_line_slot_scheduler.sv",
+            "tests/rtl/tb_hdmi_tmds_mode_mux.sv",
+            "tests/rtl/tb_hdmi_digilent_video_encoder.sv",
+            "tests/rtl/tb_hdmi_pcm_packet_source.sv",
+            "tests/rtl/tb_embedded_video_ip_7series_tx.sv",
             "tests/host/test_video_out.c",
             "tests/host/test_install_ps_library.py",
             "docs/architecture.md",
@@ -244,6 +344,11 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             sim = set(video_flow.input_manifest("sim", root))
 
             self.assertIn("tools/package_ip.tcl", package)
+            self.assertIn("tools/package_composite_ip.tcl", package)
+            self.assertIn("tools/package_all.tcl", package)
+            self.assertIn("dependencies.lock.json", package)
+            self.assertIn("NOTICE.md", package)
+            self.assertIn("third_party/digilent-rgb2dvi/OutputSERDES.vhd", package)
             self.assertIn("ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v", package)
             self.assertNotIn("docs/architecture.md", package)
             self.assertNotIn("software/video_out.c", package)
@@ -256,18 +361,22 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertNotIn("docs/architecture.md", sim)
 
             packaged_root = root / "ip_repo/panfpga/video_pipeline"
-            (packaged_root / "src").mkdir(parents=True)
-            (packaged_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
-            (packaged_root / "src/video_pipeline_v1_0.sv").write_text("packaged RTL\n", encoding="utf-8")
+            composite_root = root / "ip_repo/panfpga/embedded_video_ip"
+            for package_root in (packaged_root, composite_root):
+                (package_root / "src").mkdir(parents=True)
+                (package_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
+                (package_root / "src/hdl.sv").write_text("packaged RTL\n", encoding="utf-8")
             catalog = set(video_flow.input_manifest("ip_catalog", root))
             self.assertIn("tools/validate_ip_catalog.tcl", catalog)
             self.assertIn("ip_repo/panfpga/video_pipeline/component.xml", catalog)
-            self.assertIn("ip_repo/panfpga/video_pipeline/src/video_pipeline_v1_0.sv", catalog)
+            self.assertIn("ip_repo/panfpga/embedded_video_ip/component.xml", catalog)
+            self.assertIn("ip_repo/panfpga/video_pipeline/src/hdl.sv", catalog)
+            self.assertIn("ip_repo/panfpga/embedded_video_ip/src/hdl.sv", catalog)
             self.assertNotIn("tools/package_ip.tcl", catalog)
             self.assertNotIn("software/video_out.c", catalog)
             before_catalog = video_flow.input_manifest("ip_catalog", root)
-            (packaged_root / "src/video_pipeline_v1_0.sv").write_text(
-                "packaged RTL changed\\n", encoding="utf-8"
+            (composite_root / "src/hdl.sv").write_text(
+                "packaged RTL changed\n", encoding="utf-8"
             )
             self.assertNotEqual(video_flow.input_manifest("ip_catalog", root), before_catalog)
 
@@ -323,39 +432,53 @@ class VideoFlowCacheTests(unittest.TestCase):
 
             def runner(command, cwd, text, capture_output, check, env):
                 calls.append(command)
-                package_root = root / "ip_repo/panfpga/video_pipeline"
-                (package_root / "src").mkdir(parents=True, exist_ok=True)
-                (package_root / "component.xml").write_text("<component/>\\n", encoding="utf-8")
-                (package_root / "src/video_pipeline_v1_0.sv").write_text(
-                    "module video_pipeline; endmodule\\n", encoding="utf-8"
+                for package_root in (
+                    root / "ip_repo/panfpga/video_pipeline",
+                    root / "ip_repo/panfpga/embedded_video_ip",
+                ):
+                    (package_root / "src").mkdir(parents=True, exist_ok=True)
+                    (package_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
+                    (package_root / "src/hdl.sv").write_text(
+                        "module video_pipeline; endmodule\n", encoding="utf-8"
+                    )
+                project_dir = root / "out/package_composite_project"
+                required = (
+                    "embedded_video_ip_package.xpr",
+                    "embedded_video_ip_package.srcs/sources_1/bd/embedded_video_ip_video_out/embedded_video_ip_video_out.bd",
+                    "embedded_video_ip_package.gen/sources_1/bd/embedded_video_ip_video_out/hdl/embedded_video_ip_video_out_wrapper.v",
+                    "embedded_video_ip_package.gen/sources_1/bd/embedded_video_ip_video_out/synth/embedded_video_ip_video_out.v",
                 )
+                for relative in required:
+                    path = project_dir / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(f"fixture:{relative}\n", encoding="utf-8")
                 return SimpleNamespace(
                     returncode=0,
-                    stdout="VIDEO_IP_PACKAGE_PASS\\n",
+                    stdout="EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS\n",
                     stderr="",
                 )
 
-            command = ["vivado", "package_ip.tcl"]
+            command = ["vivado", "package_all.tcl"]
             inputs = {"package_sources": "v1"}
             video_flow.run_stage(
                 "package", command, Path("/fake/vivado"), inputs,
                 root=root, tool_version="2025.2.1", runner=runner,
-                success_marker="VIDEO_IP_PACKAGE_PASS",
+                success_marker="EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS",
             )
             self.assertFalse(video_flow.run_stage(
                 "package", command, Path("/fake/vivado"), inputs,
                 root=root, tool_version="2025.2.1", runner=runner,
-                success_marker="VIDEO_IP_PACKAGE_PASS",
+                success_marker="EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS",
             ))
             self.assertEqual(len(calls), 1)
 
-            (root / "ip_repo/panfpga/video_pipeline/src/video_pipeline_v1_0.sv").write_text(
-                "tampered\\n", encoding="utf-8"
+            (root / "ip_repo/panfpga/embedded_video_ip/src/hdl.sv").write_text(
+                "tampered\n", encoding="utf-8"
             )
             self.assertTrue(video_flow.run_stage(
                 "package", command, Path("/fake/vivado"), inputs,
                 root=root, tool_version="2025.2.1", runner=runner,
-                success_marker="VIDEO_IP_PACKAGE_PASS",
+                success_marker="EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS",
             ))
             self.assertEqual(len(calls), 2)
 
@@ -399,7 +522,7 @@ class VideoFlowCacheTests(unittest.TestCase):
                 bd_path.write_text("validated BD\\n", encoding="utf-8")
                 return SimpleNamespace(
                     returncode=0,
-                    stdout="VIDEO_IP_CATALOG_PASS\\n",
+                    stdout="EMBEDDED_VIDEO_IP_CATALOG_PASS\\n",
                     stderr="",
                 )
 
@@ -408,12 +531,12 @@ class VideoFlowCacheTests(unittest.TestCase):
             video_flow.run_stage(
                 "ip_catalog", command, Path("/fake/vivado"), inputs,
                 root=root, tool_version="2025.2.1", runner=runner,
-                success_marker="VIDEO_IP_CATALOG_PASS",
+                success_marker="EMBEDDED_VIDEO_IP_CATALOG_PASS",
             )
             self.assertFalse(video_flow.run_stage(
                 "ip_catalog", command, Path("/fake/vivado"), inputs,
                 root=root, tool_version="2025.2.1", runner=runner,
-                success_marker="VIDEO_IP_CATALOG_PASS",
+                success_marker="EMBEDDED_VIDEO_IP_CATALOG_PASS",
             ))
             self.assertEqual(len(calls), 1)
 
@@ -421,7 +544,7 @@ class VideoFlowCacheTests(unittest.TestCase):
             self.assertTrue(video_flow.run_stage(
                 "ip_catalog", command, Path("/fake/vivado"), inputs,
                 root=root, tool_version="2025.2.1", runner=runner,
-                success_marker="VIDEO_IP_CATALOG_PASS",
+                success_marker="EMBEDDED_VIDEO_IP_CATALOG_PASS",
             ))
             self.assertEqual(len(calls), 2)
 

@@ -1,63 +1,43 @@
-if {$argc < 2 || $argc > 3} { error "Usage: validate_ip_catalog.tcl REPO_ROOT IP_REPO ?OUTPUT_DIR?" }
+if {$argc != 3} { error "用法：validate_ip_catalog.tcl 仓库根目录 IP仓库目录 输出目录" }
 set repo_root [file normalize [lindex $argv 0]]
 set ip_repo [file normalize [lindex $argv 1]]
-if {$argc == 3} {
-  set validation_dir [file normalize [lindex $argv 2]]
-} else {
-  set validation_dir [file join $repo_root out ip_catalog_validation]
-}
+set validation_dir [file normalize [lindex $argv 2]]
 file mkdir [file dirname $validation_dir]
-create_project -force video_ip_validation $validation_dir -part xc7z020clg400-1
+create_project -force embedded_video_ip_catalog_validation $validation_dir -part xc7z020clg400-1
 set_property ip_repo_paths [list $ip_repo] [current_project]
 update_ip_catalog
-set definitions [get_ipdefs -all panfpga.org:video:video_pipeline:1.0]
-if {[llength $definitions] == 0} { error "Video pipeline IP not found in IP catalog." }
-create_bd_design video_pipeline_ip_validation
-create_bd_cell -type ip -vlnv panfpga.org:video:video_pipeline:1.0 video_pipeline_0
-set clk_port [create_bd_port -dir I -type clk -freq_hz 100000000 aclk]
-set_property CONFIG.FREQ_HZ 100000000 $clk_port
-set rst_port [create_bd_port -dir I -type rst aresetn]
-set_property CONFIG.POLARITY ACTIVE_LOW $rst_port
-connect_bd_net $clk_port [get_bd_pins video_pipeline_0/aclk]
-connect_bd_net $rst_port [get_bd_pins video_pipeline_0/aresetn]
-foreach intf {s_axi s_axis_hls s_axis_vdma m_axis_video} {
-  make_bd_intf_pins_external [get_bd_intf_pins video_pipeline_0/$intf]
+set_msg_config -id {BD 41-1356} -new_severity INFO
+set definitions [get_ipdefs -all panfpga.org:video:embedded_video_ip:1.0]
+if {[llength $definitions] != 1} { error "Catalog 中应只有一个 EmbeddedVideoIP VLNV" }
+create_bd_design embedded_video_ip_catalog_validation
+create_bd_cell -type ip -vlnv panfpga.org:video:embedded_video_ip:1.0 embedded_video_ip_0
+set cell [get_bd_cells embedded_video_ip_0]
+foreach name {s_axi s_axis_vdma s_axis_hls s_axis_audio_pcm} {
+  set intf [get_bd_intf_pins -quiet $cell/$name]
+  if {[llength $intf] != 1} { error "缺少必需的接口： $name" }
+  make_bd_intf_pins_external $intf
 }
-foreach pin {bram_en bram_addr bram_dout bram_busy bram_frame_done} {
-  make_bd_pins_external [get_bd_pins video_pipeline_0/$pin]
+foreach name {aclk aresetn hdmi_ref_clk audio_pcm_clk bram_en bram_addr bram_dout bram_busy bram_frame_done tmds_tx_clk_p tmds_tx_clk_n tmds_tx_data_p tmds_tx_data_n} {
+  set pin [get_bd_pins -quiet $cell/$name]
+  if {[llength $pin] != 1} { error "缺少必需的端口： $name" }
+  make_bd_pins_external $pin
 }
-# This isolated catalog check has no PS master. Exclude the exported slave segment;
-# downgrade the corresponding validation-fixture diagnostics, not design DRC checks.
-set_msg_config -id {BD 41-1630} -new_severity {INFO}
-set_msg_config -id {BD 41-1629} -new_severity {INFO}
-set register_segment [get_bd_addr_segs -quiet video_pipeline_0/s_axi/reg0]
-if {[llength $register_segment] > 0} {
-  set register_space [get_bd_addr_spaces -quiet /s_axi_0]
-  if {[llength $register_space] > 0} {
-    exclude_bd_addr_seg -target_address_space $register_space $register_segment
+foreach forbidden {hdmi_tx_hpd HDMI_DDC_IIC ac_bclk ac_mclk ac_pbdat ac_pblrc ac_muten} {
+  if {[llength [get_bd_pins -quiet $cell/$forbidden]] > 0 ||
+      [llength [get_bd_intf_pins -quiet $cell/$forbidden]] > 0} {
+    error "EmbeddedVideoIP 不得包含消费工程专属或 I2S 接口： $forbidden"
   }
 }
+set_property -dict [list CONFIG.ENABLE_HDMI_AUDIO {0}] $cell
+if {[get_property CONFIG.ENABLE_HDMI_AUDIO $cell] ne "0"} { error "未能保留音频关闭参数" }
 validate_bd_design
-# Re-customize the same catalog instance with a fixed-source scaler profile.
-set_property -dict [list \
-  CONFIG.ENABLE_BRAM_SOURCE {0} \
-  CONFIG.ENABLE_HLS_SOURCE {0} \
-  CONFIG.ENABLE_VDMA_SOURCE {1} \
-  CONFIG.SOURCE_SELECT_MODE {1} \
-  CONFIG.FIXED_SOURCE {2} \
-  CONFIG.FORMAT_SELECT_MODE {1} \
-  CONFIG.FIXED_FORMAT {2} \
-  CONFIG.MAX_SCALER_INPUT_WIDTH {640} \
-  CONFIG.MAX_SCALER_INPUT_HEIGHT {480} \
-  CONFIG.ENABLE_SCALER {1} \
-  CONFIG.LINE_BUFFER_IMPLEMENTATION {1} \
-] [get_bd_cells video_pipeline_0]
-if {[get_property CONFIG.MAX_SCALER_INPUT_WIDTH [get_bd_cells video_pipeline_0]] != 640 ||
-    [get_property CONFIG.MAX_SCALER_INPUT_HEIGHT [get_bd_cells video_pipeline_0]] != 480 ||
-    [get_property CONFIG.LINE_BUFFER_IMPLEMENTATION [get_bd_cells video_pipeline_0]] != 1} {
-  error "IP catalog did not retain fixed-source scaler parameters"
-}
+set_property -dict [list CONFIG.ENABLE_HDMI_AUDIO {1}] $cell
+if {[get_property CONFIG.ENABLE_HDMI_AUDIO $cell] ne "1"} { error "未能保留音频开启参数" }
 validate_bd_design
 save_bd_design
-puts "VIDEO_IP_CATALOG_PASS: [get_property VLNV [lindex $definitions 0]]"
+set bd_file [get_files -quiet embedded_video_ip_catalog_validation.bd]
+if {[llength $bd_file] != 1} { error "Catalog 验证 BD 未保存" }
+set cell_vlnv [get_property VLNV $cell]
+if {$cell_vlnv ne "panfpga.org:video:embedded_video_ip:1.0"} { error "Composite IP VLNV 不符合预期： $cell_vlnv" }
+puts "EMBEDDED_VIDEO_IP_CATALOG_PASS: $cell_vlnv audio_off=0 audio_on=1"
 close_project

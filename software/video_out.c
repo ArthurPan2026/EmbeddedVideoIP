@@ -13,6 +13,9 @@
 #define REG_X_RATIO       0x28U
 #define REG_Y_RATIO       0x2cU
 #define REG_ACTIVE_SIZE   0x30U
+#define REG_AUDIO_CTRL    0x34U
+#define REG_AUDIO_GAIN_Q15 0x38U
+#define REG_AUDIO_STATUS  0x3cU
 
 #define CTRL_ENABLE       (1U << 0)
 #define CTRL_SOURCE_SHIFT 1U
@@ -28,6 +31,12 @@
 #define VIDEO_OUT_STATUS_CONFIG_PENDING (1U << 2)
 #define VIDEO_OUT_STATUS_BUSY          (1U << 4)
 #define VIDEO_OUT_CONFIG_WAIT_READS    1000000U
+#define AUDIO_CTRL_HDMI_ENABLE          (1U << 0)
+#define AUDIO_CTRL_MUTE                 (1U << 1)
+#define AUDIO_STATUS_HDMI_ENABLED       (1U << 0)
+#define AUDIO_STATUS_FIFO_UNDERFLOW     (1U << 1)
+#define AUDIO_STATUS_FIFO_OVERFLOW      (1U << 2)
+#define AUDIO_GAIN_Q15_UNITY            32768U
 
 static void VideoOut_WriteControlPulse(const VideoOutIo *io, uint32_t pulse)
 {
@@ -136,25 +145,23 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
     if (config->source == VIDEO_OUT_SOURCE_VDMA) {
         if (io->configure_vdma == 0) return -1;
         if (vdma_bytes_per_pixel == 0U) vdma_bytes_per_pixel = format_bytes;
-        // V1 VDMA stream is 32-bit: one padded RGB pixel per beat.
+        // V1 VDMA 流每拍为一个补齐到 32-bit 的 RGB 像素。
         if ((vdma_bytes_per_pixel != 4U) ||
             (config->format == VIDEO_OUT_PIX_RGB565)) return -1;
         if (config->stride_bytes < ((uint32_t)config->width * vdma_bytes_per_pixel))
             return -1;
     }
 
-    // Wait for the current frame to retire while the active source remains
-    // enabled. Switching to the default source first can stop AXI-Stream
-    // mid-frame, leaving the scaler busy forever with no TLAST/SOF to recover.
+    // 等当前帧完成期间保持当前源使能。先切换默认源可能在帧中途停止 AXI-Stream，
+    // 使 scaler 无法收到 TLAST/SOF 而一直处于忙状态。
     {
         for (retry = 0U; retry < VIDEO_OUT_CONFIG_WAIT_READS; ++retry) {
             if ((io->read_reg(io->context, REG_STATUS) & VIDEO_OUT_STATUS_BUSY) == 0U)
                 break;
         }
         if (retry == VIDEO_OUT_CONFIG_WAIT_READS) {
-            // A continuous AXI-Stream producer may never expose a software-
-            // observable idle cycle. Hold the source, abort the partial frame,
-            // and then apply the new configuration before accepting another SOF.
+            // 连续 AXI-Stream 源可能不会向软件呈现空闲周期。此时先暂停输入并中止部分帧，
+            // 再应用新配置，然后继续接收下一帧的 SOF。
             VideoOut_WriteControlPulse(io, CTRL_ABORT_STREAM);
             stream_aborted = 1;
             for (retry = 0U; retry < VIDEO_OUT_CONFIG_WAIT_READS; ++retry) {
@@ -188,7 +195,7 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
     if (config->scale == VIDEO_OUT_SCALE_NEAREST) control |= CTRL_SCALE;
     if (config->aspect == VIDEO_OUT_ASPECT_STRETCH) control |= CTRL_STRETCH;
 
-    // The callback configures the standard AXI VDMA; it does not own the core registers.
+    // 此回调只配置标准 AXI VDMA，不负责写视频核寄存器。
     if ((config->source == VIDEO_OUT_SOURCE_VDMA) &&
         (io->configure_vdma(io->context, frame0, config->width,
                             config->height, vdma_bytes_per_pixel,
@@ -266,5 +273,57 @@ int VideoOut_GetStatus(const VideoOutIo *io, VideoOutStatus *status)
     status->active_height = (active_size >> 16) & 0x3ffU;
     status->frame_count = io->read_reg(io->context, REG_FRAME_COUNT);
     status->error_flags = io->read_reg(io->context, REG_ERRORS);
+    return 0;
+}
+
+static int VideoOut_UpdateAudioControl(const VideoOutIo *io, uint32_t mask, uint32_t value)
+{
+    uint32_t control;
+    if (!VideoOut_ValidIo(io))
+        return -1;
+    control = io->read_reg(io->context, REG_AUDIO_CTRL);
+    control = (control & ~mask) | (value & mask);
+    io->write_reg(io->context, REG_AUDIO_CTRL, control);
+    return 0;
+}
+
+int VideoOut_SetHdmiAudioEnabled(const VideoOutIo *io, uint8_t enabled)
+{
+    if (enabled > 1U)
+        return -1;
+    if (VideoOut_UpdateAudioControl(io, AUDIO_CTRL_HDMI_ENABLE,
+                                    enabled ? AUDIO_CTRL_HDMI_ENABLE : 0U) != 0)
+        return -1;
+    if (enabled != 0U &&
+        (io->read_reg(io->context, REG_AUDIO_STATUS) & AUDIO_STATUS_HDMI_ENABLED) == 0U)
+        return -1;
+    return 0;
+}
+
+int VideoOut_SetAudioMute(const VideoOutIo *io, uint8_t muted)
+{
+    if (muted > 1U)
+        return -1;
+    return VideoOut_UpdateAudioControl(io, AUDIO_CTRL_MUTE,
+                                       muted ? AUDIO_CTRL_MUTE : 0U);
+}
+
+int VideoOut_SetAudioGainQ15(const VideoOutIo *io, uint32_t gain_q15)
+{
+    if (!VideoOut_ValidIo(io) || (gain_q15 > AUDIO_GAIN_Q15_UNITY))
+        return -1;
+    io->write_reg(io->context, REG_AUDIO_GAIN_Q15, gain_q15);
+    return 0;
+}
+
+int VideoOut_GetAudioStatus(const VideoOutIo *io, VideoOutAudioStatus *status)
+{
+    uint32_t value;
+    if (!VideoOut_ValidIo(io) || (status == 0))
+        return -1;
+    value = io->read_reg(io->context, REG_AUDIO_STATUS);
+    status->hdmi_audio_enabled = (uint8_t)((value & AUDIO_STATUS_HDMI_ENABLED) != 0U);
+    status->fifo_underflow = (uint8_t)((value & AUDIO_STATUS_FIFO_UNDERFLOW) != 0U);
+    status->fifo_overflow = (uint8_t)((value & AUDIO_STATUS_FIFO_OVERFLOW) != 0U);
     return 0;
 }

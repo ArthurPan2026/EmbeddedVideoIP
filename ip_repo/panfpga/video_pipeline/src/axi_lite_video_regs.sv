@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 module axi_lite_video_regs #(
-  parameter int unsigned ADDR_WIDTH = 6
+  parameter int unsigned ADDR_WIDTH = 6,
+  parameter int unsigned ENABLE_HDMI_AUDIO = 0
 ) (
   input logic aclk, input logic aresetn,
   input logic [ADDR_WIDTH-1:0] s_axi_awaddr,
@@ -44,7 +45,12 @@ module axi_lite_video_regs #(
   input logic [1:0] active_source,
   input logic [9:0] active_width, input logic [9:0] active_height,
   input logic [31:0] frame_count,
-  input logic [31:0] error_flags
+  input logic [31:0] error_flags,
+  output logic hdmi_audio_enable,
+  output logic audio_mute,
+  output logic [16:0] audio_gain_q15,
+  input logic audio_underflow,
+  input logic audio_overflow
 );
   localparam logic [ADDR_WIDTH-1:0] REG_CTRL = 'h00;
   localparam logic [ADDR_WIDTH-1:0] REG_SIZE = 'h04;
@@ -59,9 +65,15 @@ module axi_lite_video_regs #(
   localparam logic [ADDR_WIDTH-1:0] REG_X_RATIO = 'h28;
   localparam logic [ADDR_WIDTH-1:0] REG_Y_RATIO = 'h2c;
   localparam logic [ADDR_WIDTH-1:0] REG_ACTIVE_SIZE = 'h30;
+  localparam logic [ADDR_WIDTH-1:0] REG_AUDIO_CTRL = 'h34;
+  localparam logic [ADDR_WIDTH-1:0] REG_AUDIO_GAIN_Q15 = 'h38;
+  localparam logic [ADDR_WIDTH-1:0] REG_AUDIO_STATUS = 'h3c;
 
   logic [31:0] ctrl_reg, size_reg, stride_reg, bram_base_reg;
   logic [31:0] active_cfg_reg, offsets_reg, origin_reg, x_ratio_reg, y_ratio_reg;
+  logic [31:0] audio_ctrl_reg;
+  logic [16:0] audio_gain_reg;
+  logic audio_underflow_sticky, audio_overflow_sticky;
   logic aw_saved, w_saved;
   logic [ADDR_WIDTH-1:0] awaddr_saved;
   logic [31:0] wdata_saved;
@@ -120,6 +132,9 @@ module axi_lite_video_regs #(
     cfg_x_rem = x_ratio_reg[25:16];
     cfg_y_step = y_ratio_reg[9:0];
     cfg_y_rem = y_ratio_reg[25:16];
+    hdmi_audio_enable = (ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0];
+    audio_mute = audio_ctrl_reg[1];
+    audio_gain_q15 = audio_gain_reg;
 
     case (s_axi_araddr)
       REG_CTRL: read_value = ctrl_reg;
@@ -136,6 +151,9 @@ module axi_lite_video_regs #(
       REG_X_RATIO: read_value = x_ratio_reg;
       REG_Y_RATIO: read_value = y_ratio_reg;
       REG_ACTIVE_SIZE: read_value = {6'd0, active_height, 6'd0, active_width};
+      REG_AUDIO_CTRL: read_value = audio_ctrl_reg;
+      REG_AUDIO_GAIN_Q15: read_value = {15'd0, audio_gain_reg};
+      REG_AUDIO_STATUS: read_value = {29'd0, audio_overflow_sticky, audio_underflow_sticky, hdmi_audio_enable};
       default: read_value = 32'd0;
     endcase
   end
@@ -151,6 +169,10 @@ module axi_lite_video_regs #(
       origin_reg <= 32'd0;
       x_ratio_reg <= 32'd1;
       y_ratio_reg <= 32'd1;
+      audio_ctrl_reg <= 32'd0;
+      audio_gain_reg <= 17'd32768;
+      audio_underflow_sticky <= 1'b0;
+      audio_overflow_sticky <= 1'b0;
       aw_saved <= 1'b0; w_saved <= 1'b0;
       awaddr_saved <= '0; wdata_saved <= '0; wstrb_saved <= '0;
       s_axi_bvalid <= 1'b0; s_axi_rvalid <= 1'b0; s_axi_rdata <= 32'd0;
@@ -162,6 +184,14 @@ module axi_lite_video_regs #(
       clear_errors <= 1'b0;
       abort_stream <= 1'b0;
       resume_stream <= 1'b0;
+
+      if (clear_errors) begin
+        audio_underflow_sticky <= 1'b0;
+        audio_overflow_sticky <= 1'b0;
+      end else begin
+        if (audio_underflow) audio_underflow_sticky <= 1'b1;
+        if (audio_overflow) audio_overflow_sticky <= 1'b1;
+      end
 
       if (aw_fire) begin awaddr_saved <= s_axi_awaddr; aw_saved <= 1'b1; end
       if (w_fire) begin
@@ -190,6 +220,19 @@ module axi_lite_video_regs #(
           REG_ORIGIN: origin_reg <= merge_strb(origin_reg, write_data, write_strb);
           REG_X_RATIO: x_ratio_reg <= merge_strb(x_ratio_reg, write_data, write_strb);
           REG_Y_RATIO: y_ratio_reg <= merge_strb(y_ratio_reg, write_data, write_strb);
+          REG_AUDIO_CTRL: begin
+            logic [31:0] merged_audio_ctrl;
+            merged_audio_ctrl = merge_strb(audio_ctrl_reg, write_data, write_strb);
+            if (ENABLE_HDMI_AUDIO == 0)
+              merged_audio_ctrl[0] = 1'b0;
+            audio_ctrl_reg <= {30'd0, merged_audio_ctrl[1:0]};
+          end
+          REG_AUDIO_GAIN_Q15: begin
+            logic [31:0] merged_audio_gain;
+            merged_audio_gain = merge_strb({15'd0, audio_gain_reg}, write_data, write_strb);
+            audio_gain_reg <= (merged_audio_gain[16:0] > 17'd32768) ?
+                              17'd32768 : merged_audio_gain[16:0];
+          end
           default: begin end
         endcase
       end

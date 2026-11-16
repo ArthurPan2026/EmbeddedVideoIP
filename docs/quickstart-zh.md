@@ -1,106 +1,67 @@
 # PL+PS 快速上手
 
-## 当前支持范围
+## 支持范围
 
-EmbeddedVideoIP 按一套 PL+PS 产品交付。PL 侧提供 Vivado IP，PS 侧提供匹配版本的 C API 和平台适配器。V1 不支持只放入 PL 的独立配置。
+EmbeddedVideoIP 0.2.0-dev.1 以配套 PL+PS 产品交付。消费者在 IP Integrator 中只添加 `panfpga.org:video:embedded_video_ip:1.0` 顶层组件。V1 板级参考配置为 Zybo Z7-20 / XC7Z020 / Zynq-7000，Vivado/Vitis 2025.2.1，视频输出固定 640×480p60。
 
-当前完成实板验证的组合是 Zybo Z7-20、XC7Z020、Zynq-7000、Vivado/Vitis 2025.2.1。其他器件可以复用不含厂商原语的视频流 RTL，但目前没有对应的 PS 适配器和完整板级参考设计，不能视为开箱即用。
-本轮板测覆盖 VDMA MM2S 输入、PS 配置、缩放和 HDMI 输出。HLS 与 BRAM 输入通过 RTL 仿真，尚未完成板上源切换验收。
+视频输入支持 VDMA MM2S、HLS AXI4-Stream 和 BRAM RGB565。HDMI 音频配置为固定 2 声道 16-bit/48 kHz LPCM，并生成 ACR、Audio InfoFrame 和数据岛子集；它尚未完成 HDMI 认证或正式板级音频验收。EmbeddedVideoIP 不包含 I²S codec 输出；如果消费板需要 codec，codec 数据与初始化留在消费工程。
 
-视频核心接收 BRAM RGB565、HLS AXI4-Stream 或 VDMA MM2S 输入。AXI4-Stream Video 的 RGB888 分量按 RBG 打包：`TDATA[23:16]=R`、`TDATA[15:8]=B`、`TDATA[7:0]=G`。核心内部转成 RGB 缩放，再按 AXI4-Stream Video 的 RBG 顺序输出。V1 HDMI 参考输出使用 AMD VDMA、VTC、`v_axi4s_vid_out` 和 Digilent `rgb2dvi`。`rgb2dvi` 依赖 7-series 原语。
-
-## 构建和验证库
+## 构建和验证 IP
 
 在安装了 Vivado 2025.2.1 的 Linux 主机上运行：
 
 ```sh
 python3 tools/video_flow.py doctor
-python3 tools/video_flow.py build --part xc7z020clg400-1
+python3 tools/video_flow.py build --part xc7z020clg400-1 --profile composite_audio_off
 ```
 
-`build` 会运行 RTL 与 C 回归，打包 Vivado IP，验证 IP Catalog 设计，并综合视频核心。构建输入和产物哈希写入 `out/manifest.json`。
+`build` 运行 XSim 和主机 C/Python 回归，生成内部视频核与组合式 IP 包，验证 IP Catalog，再对所选综合 profile 做 OOC 综合。结果、输入指纹和报告哈希记录在 `out/manifest.json`。
 
-## 安装到 Vivado
-
-先在 Vivado Tcl Console 中打开消费工程，再执行：
-
-```tcl
-source /path/to/EmbeddedVideoIP/tools/add_to_vivado_project.tcl
-```
-
-脚本会把库的 `ip_repo/` 加入当前工程并刷新 IP Catalog。之后在 IP Integrator 中添加 `panfpga.org:video:video_pipeline:1.0`。
-
-基础连接如下：
-
-- 将 `s_axi` 接到 PS 的 AXI 主端口，用于访问视频核心寄存器。
-- 将 VDMA 的 MM2S AXI4-Stream 接到 `s_axis_vdma`。
-- 将 HLS 视频流接到 `s_axis_hls`。
-- 将 BRAM 双口存储器的读数据接到 `bram_dout`，并连接 `bram_en` 和 `bram_addr`。
-- 将 `m_axis_video` 接到 `v_axi4s_vid_out`，再连接 VTC、像素时钟和板级 HDMI 发射器。
-- 所有核心 AXI-Stream 源使用同一个 `aclk`。跨时钟源先接 AXI4-Stream Clock Converter。
-- 将 `aresetn` 接到同一时钟域的低有效复位。
-
-工程必须使用 IP 配置的最大输入宽度。DDR 输入按 32 bit 像素容器传输；`STRIDE_BYTES` 表示相邻行首地址的字节间隔。视频核心配置寄存器的完整定义见 [寄存器表](register-map.md)。
-
-## 安装匹配的 PS 库
-
-把库的 C API 和 Zynq-7000 适配器安装到 Vitis 应用源码目录。目录中必须有 `UserConfig.cmake`：
+常用单阶段命令：
 
 ```sh
-python3 tools/install_ps_library.py \
-  --app-src /path/to/vitis_app/src \
-  --platform zynq7000
+python3 tools/video_flow.py sim
+python3 tools/video_flow.py package
+python3 tools/video_flow.py validate
+python3 tools/video_flow.py synth --part xc7z020clg400-1 --profile vdma_scaler_bram
+python3 tools/video_flow.py status
 ```
 
-安装器会复制 `video_out.h`、`video_out.c` 和 Xilinx VDMA 适配器，并把源文件与头文件目录登记到 `UserConfig.cmake`。重复运行不会重复添加配置。目标目录已有不同内容时，安装器会停止，不覆盖文件。
+## 在消费工程中实例化
 
-## PS 端调用示例
+将 EmbeddedVideoIP 的 `ip_repo/` 加入 Vivado 工程 IP Repository，更新 Catalog，并添加 `EmbeddedVideoIP` 顶层。消费工程不需要逐块连接 VTC、`v_axi4s_vid_out`、Clock Wizard 或 7-series HDMI 发送后端。
 
-先按 Vitis BSP 初始化 `XAxiVdma`，再绑定视频核心寄存器地址和帧缓冲区：
+顶层主要连接：
+
+- `s_axi`：连接 PS AXI 主端口，作为唯一的视频/HDMI 音频控制接口。
+- `aclk/aresetn`：连接 100 MHz PS FCLK 和低有效复位。
+- `hdmi_ref_clk`：Zybo Z7-20 profile 使用 PS FCLK0 50 MHz 作为 HDMI 时钟参考。
+- `s_axis_vdma`：连接消费工程 AMD AXI VDMA 的 MM2S AXI4-Stream 输出。
+- `s_axis_hls`：需要 HLS 视频源时连接其 AXI4-Stream Video 输出。
+- BRAM 读接口：需要 BRAM 源时连接帧缓存双口 RAM。
+- `audio_pcm_clk` 与 `s_axis_audio_pcm_*`：HDMI 音频启用时，输入 100 MHz 时钟和 48 kHz 立体声 PCM 样本流。
+- `tmds_tx_*`：约束到目标板 HDMI TX 引脚。时钟 profile 当前生成约 25.178571 MHz 像素时钟和 125.892857 MHz 串行时钟。HPD 与 DDC 不属于 EmbeddedVideoIP 顶层。消费系统继续用 PS GPIO/IIC 管理这两路信号。
+
+消费工程仍负责 PS/DDR、VDMA 帧地址和 stride、AXI 时钟/复位、BRAM/HLS 源数据，以及 HDMI DDC/HPD 的板级连线。HDMI 音频以外的音频输出设备也由消费工程管理。
+
+## 配置 HDMI 音频
+
+音频流每次 AXI 握手传输左右声道一对有符号 16 位 PCM 样本：`TDATA[15:0]=L`，`TDATA[31:16]=R`。源端以 48 kHz 节拍拉高 `s_axis_audio_pcm_tvalid`，并在 `s_axis_audio_pcm_tready` 为低时保持数据。PCM AXI 音频时钟为 100 MHz。
+
+PS 端调用配套 API：
 
 ```c
 #include "video_out_xilinx.h"
-#include "xparameters.h"
 
-static VideoOutXilinx video;
-static VideoOutIo video_io;
-static VideoOutConfig config = {
-    .source = VIDEO_OUT_SOURCE_VDMA,
-    .format = VIDEO_OUT_PIX_XRGB8888,
-    .width = 240U,
-    .height = 160U,
-    .stride_bytes = 240U * 4U,
-    .scale = VIDEO_OUT_SCALE_NEAREST,
-    .aspect = VIDEO_OUT_ASPECT_FIT,
-    .enabled = 0U,
-    .initial_frame_index = 0U,
-};
-
-int start_video(XAxiVdma *vdma, UINTPTR frame0, uint32_t frame_slot_bytes)
-{
-    if (VideoOutXilinx_Bind(&video, vdma,
-            XPAR_VIDEO_PIPELINE_0_S_AXI_BASEADDR,
-            frame0, frame_slot_bytes, 3U) != 0) {
-        return -1;
-    }
-    if (VideoOutXilinx_Configure(&video, &config, 4U) != 0) {
-        return -1;
-    }
-    video_io = VideoOutXilinx_GetIo(&video);
-    return VideoOut_Start(&video_io);
-}
+VideoOutXilinx_SetHdmiAudioEnabled(&video, 1U);
+VideoOutXilinx_SetAudioMute(&video, 0U);
+VideoOutXilinx_SetAudioGainQ15(&video, 32768U); /* 单位增益 */
 ```
 
-应用需要先为 VDMA 配置并分配至少 3 个帧缓冲。每个帧缓冲的 `frame_slot_bytes` 必须覆盖 `stride_bytes × height`。`VideoOutXilinx_Configure()` 会设置 MM2S 的 HSIZE、VSIZE、STRIDE 和帧地址，也会写入核心的输入格式与缩放参数。
+采样率与静态功能由 Vivado IP 参数配置。若项目不使用 HDMI 音频，将 `ENABLE_HDMI_AUDIO=0`，综合时裁掉相关 FIFO/formatter/packetizer。I²S codec 路由由消费工程独立管理，消费 UI 可在 HDMI 音频使能与 codec 播放之间切换。
 
-运行时可用 `VideoOut_GetStatus()` 读取活动源、活动尺寸、帧计数和错误标志。使用 HLS 或 BRAM 源时，PS API 仍负责配置视频核心；源数据由对应的 PL 接口提供。
+寄存器和 API 细节见[寄存器表](register-map.md)和[组合式 IP 接口](composite-ip-api.md)。
 
-## 打包内容
+## 可验证 profile
 
-- `ip_repo/`：可加入 Vivado IP Catalog 的 PL IP。
-- `software/`：通用 PS API 与平台无关的配置计算。
-- `software/platforms/xilinx_zynq7000/`：Zynq-7000、Vitis standalone/FreeRTOS 的 VDMA 和 MMIO 适配器。
-- `platforms/amd_7series/`：Zybo Z7-20 板级能力和依赖说明。
-- `tools/`：回归、IP 打包、Vivado 工程注册和 Vitis 库安装工具。
-
-HDMI 时钟、VTC、物理发射器、PS 地址映射和帧缓冲分配仍由板级工程配置。当前只有 Zybo Z7-20 配套了可复现的整板构建与部署流程。
+`vdma_scaler_lutram` 与 `vdma_scaler_bram` 使用同一条源代码路径，分别选择 LUTRAM/BRAM 行缓冲。`passthrough` 固定 VDMA 源并关闭 scaler。HDMI 音频 off/on profile 也使用同一个 EmbeddedVideoIP VLNV，通过静态参数裁剪。完整构建与验收流程见[构建与使用](build-and-use.md)。

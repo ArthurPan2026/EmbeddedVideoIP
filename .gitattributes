@@ -1,0 +1,7 @@
+third_party/digilent-rgb2dvi/** whitespace=-blank-at-eol
+ip_repo/panfpga/embedded_video_ip/src/DVI_Constants.vhd whitespace=-blank-at-eol
+ip_repo/panfpga/embedded_video_ip/src/OutputSERDES.vhd whitespace=-blank-at-eol
+ip_repo/panfpga/embedded_video_ip/src/TMDS_Encoder.vhd whitespace=-blank-at-eol
+ip_repo/panfpga/embedded_video_ip/sim/embedded_video_ip_video_out.v whitespace=-blank-at-eol
+ip_repo/panfpga/embedded_video_ip/xgui/embedded_video_ip_top_v1_0.tcl whitespace=-blank-at-eof
+ip_repo/panfpga/embedded_video_ip/src/embedded_video_ip_video_out.v whitespace=-blank-at-eol

@@ -68,6 +68,8 @@ static void write_reg(void *context, uint32_t offset, uint32_t value)
         return;
     }
     fake->regs[(offset >> 2) & 15U] = value;
+    if (offset == 0x34U)
+        fake->regs[15] = (fake->regs[15] & ~1U) | (value & 1U);
 }
 
 static int configure_vdma(void *context, uint64_t base, uint32_t width,
@@ -86,14 +88,16 @@ static int configure_vdma(void *context, uint64_t base, uint32_t width,
     return fake->vdma_result;
 }
 
-#define CHECK(c, m) do { if (!(c)) { fprintf(stderr, "FAIL: %s\n", m); return 1; } } while (0)
+#define CHECK(c, m) do { if (!(c)) { fprintf(stderr, "测试失败：%s\n", m); return 1; } } while (0)
 
 int main(void)
 {
+    CHECK(strcmp(VIDEO_OUT_VERSION, "0.2.0-dev.1") == 0, "PS库版本不匹配");
     FakeVideo fake;
     VideoOutIo io;
     VideoOutConfig cfg;
     VideoOutStatus status;
+    VideoOutAudioStatus audio_status;
 
     memset(&fake, 0, sizeof(fake));
     memset(&cfg, 0, sizeof(cfg));
@@ -115,40 +119,40 @@ int main(void)
     fake.busy_reads_before_clear = 3U;
 
     CHECK(VideoOut_Configure(&io, &cfg, 0x10000000ULL, 0U) == 0,
-          "valid VDMA configuration rejected");
+          "有效VDMA配置被拒绝");
     CHECK(fake.vdma_calls == 1U && fake.vdma_width == 320U &&
           fake.vdma_height == 240U && fake.vdma_bpp == 4U &&
           fake.vdma_stride == 1280U && fake.vdma_initial_frame == 0U && fake.vdma_base == 0x10000000ULL,
-          "VDMA callback received wrong geometry");
+          "VDMA回调收到的几何参数错误");
     CHECK((fake.regs[0] & 1U) != 0U && (fake.first_ctrl_write & (1U << 8)) != 0U,
-          "AXI-Lite control commit was not written");
+          "未写入AXI-Lite配置提交");
     CHECK(fake.ctrl_write_count == 1U && (fake.first_ctrl_write & 1U) != 0U &&
           (((fake.first_ctrl_write >> 1) & 3U) == VIDEO_OUT_SOURCE_VDMA),
-          "configuration switched away from the active source before the frame boundary");
+          "在帧边界前切离了当前活动视频源");
     CHECK(fake.busy_on_first_vdma_call == 0U,
-          "VDMA geometry changed while the scaler was still busy");
+          "scaler仍繁忙时改动了VDMA几何参数");
     CHECK(fake.regs[1] == ((240U << 16) | 320U),
-          "input geometry register value mismatch");
+          "输入尺寸寄存器值不匹配");
     CHECK(fake.regs[7] == ((480U << 16) | 640U) &&
           fake.regs[8] == 0U && fake.regs[9] == 0U,
-          "derived fit geometry register mismatch");
+          "fit模式派生几何寄存器值不匹配");
     CHECK(fake.regs[10] == (320U << 16) && fake.regs[11] == (240U << 16),
-          "nearest-neighbor DDA ratio mismatch");
+          "最近邻DDA比例不匹配");
 
     CHECK(VideoOut_Start(&io) == 0 &&
-          (fake.regs[0] & 1U) != 0U, "start failed");
+          (fake.regs[0] & 1U) != 0U, "启动失败");
     CHECK(VideoOut_Stop(&io) == 0 &&
-          (fake.regs[0] & 1U) == 0U, "stop failed");
+          (fake.regs[0] & 1U) == 0U, "停止失败");
 
     fake.vdma_calls = 0U;
     cfg.stride_bytes = 1000U;
     CHECK(VideoOut_Configure(&io, &cfg, 0x10000000ULL, 0U) != 0 &&
-          fake.vdma_calls == 0U, "short stride was not rejected");
+          fake.vdma_calls == 0U, "未拒绝过短的stride");
 
     cfg.stride_bytes = 1280U;
     cfg.width = 0U;
     CHECK(VideoOut_Configure(&io, &cfg, 0x10000000ULL, 0U) != 0,
-          "zero width was not rejected");
+          "未拒绝宽度为零的配置");
 
     cfg.width = 320U;
     cfg.height = 180U;
@@ -156,13 +160,13 @@ int main(void)
     cfg.initial_frame_index = 2U;
     fake.vdma_calls = 0U;
     CHECK(VideoOut_Configure(&io, &cfg, 0x10000000ULL, 0U) == 0,
-          "320x180 fit configuration rejected");
+          "320x180 fit配置被拒绝");
     CHECK(fake.regs[7] == ((360U << 16) | 640U) &&
           fake.regs[8] == (60U << 16) &&
           fake.regs[10] == (320U << 16) &&
           fake.regs[11] == (180U << 16),
-          "320x180 fit geometry/ratio mismatch");
-    CHECK(fake.vdma_initial_frame == 2U, "initial park index was not forwarded");
+          "320x180 fit几何参数或比例不匹配");
+    CHECK(fake.vdma_initial_frame == 2U, "初始park帧索引未传递");
 
     cfg.width = 320U;
     cfg.height = 240U;
@@ -177,13 +181,34 @@ int main(void)
     fake.regs[5] = 123U;
     fake.regs[6] = 0x20U;
     CHECK(VideoOut_Configure(&io, &cfg, 0U, 0U) == 0,
-          "valid BRAM configuration rejected");
-    CHECK(fake.vdma_calls == 0U, "BRAM mode unexpectedly configured VDMA");
-    fake.regs[4] = (2U << 6) | (1U << 4); /* active source and busy */
+          "有效BRAM配置被拒绝");
+    CHECK(fake.vdma_calls == 0U, "BRAM模式意外配置了VDMA");
+    fake.regs[4] = (2U << 6) | (1U << 4); /* 当前源和忙状态 */
     CHECK(VideoOut_GetStatus(&io, &status) == 0 &&
           status.busy == 1U && status.active_width == 320U &&
           status.active_height == 240U && status.frame_count == 123U &&
-          status.error_flags == 0x20U, "status decode mismatch");
+          status.error_flags == 0x20U, "状态寄存器解析不匹配");
+
+    fake.regs[13] = 1U << 1;
+    CHECK(VideoOut_SetHdmiAudioEnabled(&io, 1U) == 0 && fake.regs[13] == 3U,
+          "HDMI音频使能更新破坏了静音设置");
+    CHECK(VideoOut_SetAudioMute(&io, 0U) == 0 && fake.regs[13] == 1U,
+          "音频静音更新破坏了HDMI使能状态");
+    CHECK(VideoOut_SetAudioGainQ15(&io, 24576U) == 0 && fake.regs[14] == 24576U,
+          "有效Q15音频增益未写入");
+    CHECK(VideoOut_SetAudioGainQ15(&io, 32769U) != 0 && fake.regs[14] == 24576U,
+          "越界Q15音频增益未被拒绝");
+    CHECK(VideoOut_SetHdmiAudioEnabled(&io, 2U) != 0 &&
+          VideoOut_SetAudioMute(&io, 2U) != 0,
+          "非法音频控制布尔值未被拒绝");
+    fake.regs[15] = 7U;
+    CHECK(VideoOut_GetAudioStatus(&io, &audio_status) == 0 &&
+          audio_status.hdmi_audio_enabled == 1U &&
+          audio_status.fifo_underflow == 1U &&
+          audio_status.fifo_overflow == 1U,
+          "HDMI音频状态解析不匹配");
+    CHECK(VideoOut_GetAudioStatus(&io, 0) != 0,
+          "未拒绝空HDMI音频状态指针");
 
     memset(&fake, 0, sizeof(fake));
     memset(&cfg, 0, sizeof(cfg));
@@ -199,20 +224,20 @@ int main(void)
     fake.regs[4] = (2U << 6) | (1U << 4) | 1U;
     fake.force_busy = 1U;
     CHECK(VideoOut_Configure(&io, &cfg, 0x18000000ULL, 4U) == 0,
-          "stuck stream did not recover through abort and reconfigure");
+          "卡住的数据流未能通过中止和重配恢复");
     CHECK(fake.abort_count == 1U && fake.resume_count == 0U &&
           fake.ctrl_write_count == 2U,
-          "reconfiguration should issue one abort followed by one commit");
+          "重配应先中止一次，再提交一次");
     CHECK(fake.hold_during_vdma == 1U && fake.busy_on_first_vdma_call == 0U,
-          "VDMA callback did not run while input was held and scaler idle");
+          "输入保持且scaler空闲时VDMA回调未运行");
     CHECK((fake.last_ctrl_write & (1U << 8)) != 0U &&
           (fake.regs[4] & ((1U << 4) | (1U << 2) | (1U << 1))) == 0U &&
           (fake.regs[4] & 1U) != 0U,
-          "valid commit did not release the held stream");
+          "有效提交未释放被保持的数据流");
     CHECK(VideoOut_GetStatus(&io, &status) == 0 &&
           status.enabled == 1U && status.stream_held == 0U &&
           status.config_pending == 0U,
-          "status did not report recovered stream state");
+          "状态未报告数据流已恢复");
 
     puts("TEST_PASS: test_video_out");
     return 0;

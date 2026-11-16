@@ -376,7 +376,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>d69d3150</spirit:value>
+            <spirit:value>97215747</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -392,7 +392,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>d69d3150</spirit:value>
+            <spirit:value>97215747</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -406,7 +406,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>86fcfd32</spirit:value>
+            <spirit:value>5410b88c</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -1015,6 +1015,75 @@
           </spirit:driver>
         </spirit:wire>
       </spirit:port>
+      <spirit:port>
+        <spirit:name>hdmi_audio_enable</spirit:name>
+        <spirit:wire>
+          <spirit:direction>out</spirit:direction>
+          <spirit:wireTypeDefs>
+            <spirit:wireTypeDef>
+              <spirit:typeName>wire</spirit:typeName>
+              <spirit:viewNameRef>xilinx_anylanguagesynthesis</spirit:viewNameRef>
+              <spirit:viewNameRef>xilinx_anylanguagebehavioralsimulation</spirit:viewNameRef>
+            </spirit:wireTypeDef>
+          </spirit:wireTypeDefs>
+        </spirit:wire>
+      </spirit:port>
+      <spirit:port>
+        <spirit:name>audio_mute</spirit:name>
+        <spirit:wire>
+          <spirit:direction>out</spirit:direction>
+          <spirit:wireTypeDefs>
+            <spirit:wireTypeDef>
+              <spirit:typeName>wire</spirit:typeName>
+              <spirit:viewNameRef>xilinx_anylanguagesynthesis</spirit:viewNameRef>
+              <spirit:viewNameRef>xilinx_anylanguagebehavioralsimulation</spirit:viewNameRef>
+            </spirit:wireTypeDef>
+          </spirit:wireTypeDefs>
+        </spirit:wire>
+      </spirit:port>
+      <spirit:port>
+        <spirit:name>audio_gain_q15</spirit:name>
+        <spirit:wire>
+          <spirit:direction>out</spirit:direction>
+          <spirit:vector>
+            <spirit:left spirit:format="long">16</spirit:left>
+            <spirit:right spirit:format="long">0</spirit:right>
+          </spirit:vector>
+          <spirit:wireTypeDefs>
+            <spirit:wireTypeDef>
+              <spirit:typeName>wire</spirit:typeName>
+              <spirit:viewNameRef>xilinx_anylanguagesynthesis</spirit:viewNameRef>
+              <spirit:viewNameRef>xilinx_anylanguagebehavioralsimulation</spirit:viewNameRef>
+            </spirit:wireTypeDef>
+          </spirit:wireTypeDefs>
+        </spirit:wire>
+      </spirit:port>
+      <spirit:port>
+        <spirit:name>audio_underflow</spirit:name>
+        <spirit:wire>
+          <spirit:direction>in</spirit:direction>
+          <spirit:wireTypeDefs>
+            <spirit:wireTypeDef>
+              <spirit:typeName>wire</spirit:typeName>
+              <spirit:viewNameRef>xilinx_anylanguagesynthesis</spirit:viewNameRef>
+              <spirit:viewNameRef>xilinx_anylanguagebehavioralsimulation</spirit:viewNameRef>
+            </spirit:wireTypeDef>
+          </spirit:wireTypeDefs>
+        </spirit:wire>
+      </spirit:port>
+      <spirit:port>
+        <spirit:name>audio_overflow</spirit:name>
+        <spirit:wire>
+          <spirit:direction>in</spirit:direction>
+          <spirit:wireTypeDefs>
+            <spirit:wireTypeDef>
+              <spirit:typeName>wire</spirit:typeName>
+              <spirit:viewNameRef>xilinx_anylanguagesynthesis</spirit:viewNameRef>
+              <spirit:viewNameRef>xilinx_anylanguagebehavioralsimulation</spirit:viewNameRef>
+            </spirit:wireTypeDef>
+          </spirit:wireTypeDefs>
+        </spirit:wire>
+      </spirit:port>
     </spirit:ports>
     <spirit:modelParameters>
       <spirit:modelParameter xsi:type="spirit:nameValueTypeType" spirit:dataType="integer">
@@ -1102,6 +1171,11 @@
         <spirit:displayName>Line Buffer Implementation</spirit:displayName>
         <spirit:value spirit:format="long" spirit:resolve="generated" spirit:id="MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION">0</spirit:value>
       </spirit:modelParameter>
+      <spirit:modelParameter spirit:dataType="integer">
+        <spirit:name>ENABLE_HDMI_AUDIO</spirit:name>
+        <spirit:displayName>Enable Hdmi Audio</spirit:displayName>
+        <spirit:value spirit:format="long" spirit:resolve="generated" spirit:id="MODELPARAM_VALUE.ENABLE_HDMI_AUDIO">0</spirit:value>
+      </spirit:modelParameter>
     </spirit:modelParameters>
   </spirit:model>
   <spirit:choices>
@@ -1147,7 +1221,7 @@
       <spirit:file>
         <spirit:name>src/video_pipeline_v1_0_wrapper.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
-        <spirit:userFileType>CHECKSUM_deea27fc</spirit:userFileType>
+        <spirit:userFileType>CHECKSUM_c85b27a5</spirit:userFileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
@@ -1194,12 +1268,12 @@
       <spirit:file>
         <spirit:name>xgui/video_pipeline_v1_0_wrapper_v1_0.tcl</spirit:name>
         <spirit:fileType>tclSource</spirit:fileType>
-        <spirit:userFileType>CHECKSUM_ab0afd95</spirit:userFileType>
+        <spirit:userFileType>CHECKSUM_2784e638</spirit:userFileType>
         <spirit:userFileType>XGUI_VERSION_2</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
   </spirit:fileSets>
-  <spirit:description>Portable AXI4-Stream RGB888 scaler with BRAM, HLS, and VDMA source adapters.</spirit:description>
+  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.2.0-dev.1.</spirit:description>
   <spirit:parameters>
     <spirit:parameter>
       <spirit:name>MAX_INPUT_WIDTH</spirit:name>
@@ -1287,6 +1361,11 @@
       <spirit:value spirit:format="long" spirit:resolve="user" spirit:id="PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION">0</spirit:value>
     </spirit:parameter>
     <spirit:parameter>
+      <spirit:name>ENABLE_HDMI_AUDIO</spirit:name>
+      <spirit:displayName>Enable Hdmi Audio</spirit:displayName>
+      <spirit:value spirit:format="long" spirit:resolve="user" spirit:id="PARAM_VALUE.ENABLE_HDMI_AUDIO">0</spirit:value>
+    </spirit:parameter>
+    <spirit:parameter>
       <spirit:name>Component_Name</spirit:name>
       <spirit:value spirit:resolve="user" spirit:id="PARAM_VALUE.Component_Name" spirit:order="1">video_pipeline_v1_0_wrapper_v1_0</spirit:value>
     </spirit:parameter>
@@ -1310,20 +1389,20 @@
       <xilinx:taxonomies>
         <xilinx:taxonomy>/Video</xilinx:taxonomy>
       </xilinx:taxonomies>
-      <xilinx:displayName>Embedded Video Pipeline</xilinx:displayName>
+      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.2.0-dev.1</xilinx:displayName>
       <xilinx:definitionSource>package_project</xilinx:definitionSource>
       <xilinx:vendorDisplayName>Personal FPGA IP</xilinx:vendorDisplayName>
       <xilinx:coreRevision>1</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-11-14T08:59:21Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-11-16T00:55:29Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2.1</xilinx:xilinxVersion>
       <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="b9a3da76"/>
       <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="6a6443ca"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="e12c6336"/>
-      <xilinx:checksum xilinx:scope="ports" xilinx:value="9f07886d"/>
-      <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="3ff922da"/>
-      <xilinx:checksum xilinx:scope="parameters" xilinx:value="b8ab7f78"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="5bfc96cf"/>
+      <xilinx:checksum xilinx:scope="ports" xilinx:value="45ba7db9"/>
+      <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="831a59ed"/>
+      <xilinx:checksum xilinx:scope="parameters" xilinx:value="a61791df"/>
     </xilinx:packagingInfo>
   </spirit:vendorExtensions>
 </spirit:component>

@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define VIDEO_OUT_VERSION "0.2.0-dev.1"
+
 #define VIDEO_OUT_OUTPUT_WIDTH 640U
 #define VIDEO_OUT_OUTPUT_HEIGHT 480U
 #define VIDEO_OUT_MAX_INPUT_WIDTH 640U
@@ -13,8 +15,7 @@ extern "C" {
 #endif
 
 typedef enum { VIDEO_OUT_SOURCE_BRAM=0, VIDEO_OUT_SOURCE_HLS=1, VIDEO_OUT_SOURCE_VDMA=2 } VideoOutSource;
-/* RGB888 on AXI4-Stream Video uses AMD component order RBG. XRGB/BGRX
- * describe 32-bit pixel containers in memory; the core normalizes internally. */
+/* AXI4-Stream 视频 RGB888 按 AMD RBG 分量顺序传输；XRGB/BGRX 描述内存像素容器。 */
 typedef enum {
     VIDEO_OUT_PIX_RGB565 = 0,
     VIDEO_OUT_PIX_RGB888 = 1,
@@ -35,6 +36,12 @@ typedef struct {
     uint8_t enabled;
     uint8_t initial_frame_index;
 } VideoOutConfig;
+
+typedef struct {
+    uint8_t hdmi_audio_enabled;
+    uint8_t fifo_underflow;
+    uint8_t fifo_overflow;
+} VideoOutAudioStatus;
 
 typedef struct {
     uint32_t (*read_reg)(void *context, uint32_t offset);
@@ -64,6 +71,10 @@ int VideoOut_Start(const VideoOutIo *io);
 int VideoOut_BramSubmit(const VideoOutIo *io, uint32_t frame_base_word);
 int VideoOut_Stop(const VideoOutIo *io);
 int VideoOut_GetStatus(const VideoOutIo *io, VideoOutStatus *status);
+int VideoOut_SetHdmiAudioEnabled(const VideoOutIo *io, uint8_t enabled);
+int VideoOut_SetAudioMute(const VideoOutIo *io, uint8_t muted);
+int VideoOut_SetAudioGainQ15(const VideoOutIo *io, uint32_t gain_q15);
+int VideoOut_GetAudioStatus(const VideoOutIo *io, VideoOutAudioStatus *status);
 
 #ifdef __cplusplus
 }

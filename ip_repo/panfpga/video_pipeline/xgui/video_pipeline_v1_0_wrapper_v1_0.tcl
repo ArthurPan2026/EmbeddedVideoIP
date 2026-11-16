@@ -6,6 +6,7 @@ proc init_gui { IPINST } {
   ipgui::add_param $IPINST -name "AXI_ADDR_WIDTH" -parent ${Page_0}
   ipgui::add_param $IPINST -name "BRAM_ADDR_WIDTH" -parent ${Page_0}
   ipgui::add_param $IPINST -name "ENABLE_BRAM_SOURCE" -parent ${Page_0}
+  ipgui::add_param $IPINST -name "ENABLE_HDMI_AUDIO" -parent ${Page_0}
   ipgui::add_param $IPINST -name "ENABLE_HLS_SOURCE" -parent ${Page_0}
   ipgui::add_param $IPINST -name "ENABLE_SCALER" -parent ${Page_0}
   ipgui::add_param $IPINST -name "ENABLE_VDMA_SOURCE" -parent ${Page_0}
@@ -48,6 +49,15 @@ proc update_PARAM_VALUE.ENABLE_BRAM_SOURCE { PARAM_VALUE.ENABLE_BRAM_SOURCE } {
 
 proc validate_PARAM_VALUE.ENABLE_BRAM_SOURCE { PARAM_VALUE.ENABLE_BRAM_SOURCE } {
 	# Procedure called to validate ENABLE_BRAM_SOURCE
+	return true
+}
+
+proc update_PARAM_VALUE.ENABLE_HDMI_AUDIO { PARAM_VALUE.ENABLE_HDMI_AUDIO } {
+	# Procedure called to update ENABLE_HDMI_AUDIO when any of the dependent parameters in the arguments change
+}
+
+proc validate_PARAM_VALUE.ENABLE_HDMI_AUDIO { PARAM_VALUE.ENABLE_HDMI_AUDIO } {
+	# Procedure called to validate ENABLE_HDMI_AUDIO
 	return true
 }
 
@@ -261,6 +271,11 @@ proc update_MODELPARAM_VALUE.ENABLE_SCALER { MODELPARAM_VALUE.ENABLE_SCALER PARA
 proc update_MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION { MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION } {
 	# Procedure called to set VHDL generic/Verilog parameter value(s) based on TCL parameter value
 	set_property value [get_property value ${PARAM_VALUE.LINE_BUFFER_IMPLEMENTATION}] ${MODELPARAM_VALUE.LINE_BUFFER_IMPLEMENTATION}
+}
+
+proc update_MODELPARAM_VALUE.ENABLE_HDMI_AUDIO { MODELPARAM_VALUE.ENABLE_HDMI_AUDIO PARAM_VALUE.ENABLE_HDMI_AUDIO } {
+	# Procedure called to set VHDL generic/Verilog parameter value(s) based on TCL parameter value
+	set_property value [get_property value ${PARAM_VALUE.ENABLE_HDMI_AUDIO}] ${MODELPARAM_VALUE.ENABLE_HDMI_AUDIO}
 }
 
 

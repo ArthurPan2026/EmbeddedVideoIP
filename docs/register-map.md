@@ -1,23 +1,34 @@
-# AXI-Lite register map (V1)
+# EmbeddedVideoIP AXI-Lite 寄存器表
 
-All registers are 32-bit, byte addressed, little-endian. Writes are accepted with independent AXI-Lite AW and W handshakes. Control bit 8 is a commit pulse, bit 9 requests one BRAM frame read, bit 10 clears sticky errors, bit 11 aborts and holds the current stream for reconfiguration, and bit 12 releases an aborted stream if a platform callback fails. A valid configuration commit releases the hold after the active configuration is updated.
+所有寄存器为 32-bit、按字节寻址、小端。AXI-Lite AW 与 W 通道独立握手，寄存器接口支持 byte strobe。唯一外部 `S_AXI` 控制口的地址窗口至少为 `0x40` 字节。
 
-| Offset | Name | Access | Fields |
+`CTRL` bit 8 是视频配置提交脉冲，bit 9 请求读取一帧 BRAM，bit 10 清除视频/音频 sticky 错误，bit 11 暂停输入并中止当前部分帧，bit 12 在异常恢复路径中释放输入。
+
+| 偏移 | 名称 | 访问 | 字段 |
 |---|---|---|---|
-| 0x00 | CTRL | RW/W1P | bit 0 enable; bits 2:1 source (0 BRAM, 1 HLS, 2 VDMA); bit 3 nearest-neighbor enable; bit 4 stretch mode; bits 6:5 pixel format; bit 8 commit; bit 9 start BRAM frame; bit 10 clear errors |
-| 0x04 | INPUT_SIZE | RW | width[15:0], height[31:16] |
-| 0x08 | STRIDE_BYTES | RW | source memory line stride in bytes |
-| 0x0C | BRAM_BASE_WORD | RW | BRAM reader base address in 32-bit words |
-| 0x10 | STATUS | RO | bits 7:6 active source, bit 5 BRAM busy, bit 4 pipeline busy, bit 2 configuration pending, bit 1 stream held, bit 0 enabled |
-| 0x14 | FRAME_COUNT | RO | completed output frames |
-| 0x18 | ERROR_FLAGS | RO | low half scaler/profile errors; bit 4 rejects disabled source, fixed-format mismatch, or non-1:1 geometry when the scaler is disabled; high half BRAM reader errors. Clear with CTRL bit 10. |
-| 0x1C | ACTIVE_SIZE_CFG | RW | active width[9:0], height[25:16] |
-| 0x20 | OFFSETS | RW | x offset[9:0], y offset[25:16] |
-| 0x24 | SOURCE_ORIGIN | RW | source x[9:0], source y[25:16] |
-| 0x28 | X_RATIO | RW | source step[9:0], remainder[25:16] |
-| 0x2C | Y_RATIO | RW | source step[9:0], remainder[25:16] |
-| 0x30 | ACTIVE_SIZE | RO | actual active width/height after frame start |
+| `0x00` | `CTRL` | RW/W1P | bit 0 视频使能；bits `[2:1]` 视频源（0=BRAM、1=HLS、2=VDMA）；bit 3 最近邻 scaler 使能；bit 4 stretch；bits `[6:5]` 像素格式；bit 8 commit；bit 9 BRAM frame start；bit 10 clear errors；bit 11 abort/hold stream；bit 12 resume stream |
+| `0x04` | `INPUT_SIZE` | RW | bits `[15:0]` width，`[31:16]` height |
+| `0x08` | `STRIDE_BYTES` | RW | 源图像相邻行首地址的字节间距 |
+| `0x0C` | `BRAM_BASE_WORD` | RW | BRAM reader 起始地址，单位为 32-bit word |
+| `0x10` | `STATUS` | RO | bits `[7:6]` 活动视频源；bit 5 BRAM busy；bit 4 pipeline busy；bit 2 配置待提交；bit 1 stream held；bit 0 video enabled |
+| `0x14` | `FRAME_COUNT` | RO | 已完成输出帧数 |
+| `0x18` | `ERROR_FLAGS` | RO | 视频 scaler/profile/BRAM sticky error 标志；`CTRL` bit 10 清除 |
+| `0x1C` | `ACTIVE_SIZE_CFG` | RW | bits `[9:0]` active width，`[25:16]` active height |
+| `0x20` | `OFFSETS` | RW | bits `[9:0]` x offset，`[25:16]` y offset |
+| `0x24` | `SOURCE_ORIGIN` | RW | bits `[9:0]` source x，`[25:16]` source y |
+| `0x28` | `X_RATIO` | RW | bits `[9:0]` source step，`[25:16]` remainder |
+| `0x2C` | `Y_RATIO` | RW | bits `[9:0]` source step，`[25:16]` remainder |
+| `0x30` | `ACTIVE_SIZE` | RO | 当前活动画面的 width/height |
+| `0x34` | `AUDIO_CTRL` | RW | bit 0 `HDMI_AUDIO_ENABLED`；bit 1 `AUDIO_MUTE`；其他位保留为 0 |
+| `0x38` | `AUDIO_GAIN_Q15` | RW | bits `[16:0]` Q15 增益，`0..32768`，其中 32768 为 unity gain；大于 32768 的值饱和到 32768 |
+| `0x3C` | `AUDIO_STATUS` | RO | bit 0：`HDMI_AUDIO_ENABLED` 配置状态；bit 1：音频欠载 sticky 状态；bit 2：保留，V1 恒为 0；其他位为 0 |
 
-RGB888 AXI4-Stream Video uses AMD component packing: R in TDATA[23:16], B in [15:8], G in [7:0]. The core converts to internal RGB for scaling and emits the same RBG order. XRGB8888 memory input is a distinct format whose low 24-bit word is RGB.
+`AUDIO_CTRL.bit0` 在 `ENABLE_HDMI_AUDIO=0` 的静态 profile 中会被强制为 0。`AUDIO_CTRL.bit1` 可在运行时静音 HDMI 音频；`AUDIO_GAIN_Q15` 调整 PCM 输出幅度。`CTRL.bit10` 清除音频欠载状态。V1 通过 AXI4-Stream 背压处理 FIFO 满状态，不产生溢出事件；因此 AUDIO_STATUS bit 2 保留并恒为 0。配套 C 结构体中的 fifo_overflow 字段保留，当前也返回 0。
 
-The PS library computes ACTIVE_SIZE_CFG, OFFSETS, SOURCE_ORIGIN, and X/Y_RATIO from the requested input geometry, scale mode, aspect policy, and fixed output timing. The RTL core does not implement a variable divider. The supported V1 product uses the paired PS library to write these derived registers before setting CTRL.commit. If a continuous stream never presents a software-observable idle cycle, the library aborts the partial frame, holds input ready low, reconfigures the source, then commits and releases the hold on a valid configuration. Direct register writes are reserved for diagnostics; PL-only integration is not a supported V1 configuration.
+## PCM AXI4-Stream 格式
+
+Composite 顶层提供 `audio_pcm_clk` 和一组 AXI4-Stream PCM 输入。`TDATA[15:0]` 为有符号 16-bit 左声道，`TDATA[31:16]` 为有符号 16-bit 右声道。每次 `TVALID && TREADY` 表示一个立体声样本对；源端由消费工程的音频适配器按 48 kHz 提供样本，并在背压期间保持数据和 `TVALID` 稳定。
+
+## 视频参数计算
+
+PS C 库根据输入尺寸、scale 模式和 aspect policy 计算 `ACTIVE_SIZE_CFG`、`OFFSETS`、`SOURCE_ORIGIN`、`X_RATIO` 和 `Y_RATIO`，再通过 `CTRL.commit` 提交。RTL 不包含运行时可变除法器。固定输出 VTC timing 和像素时钟由 Vivado composite BD profile 配置。

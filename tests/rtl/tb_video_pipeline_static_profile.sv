@@ -42,6 +42,9 @@ module tb_video_pipeline_static_profile;
   logic [31:0] bram_dout = '0;
   logic bram_busy;
   logic bram_frame_done;
+  logic hdmi_audio_enable, audio_mute;
+  logic [16:0] audio_gain_q15;
+  logic audio_underflow = 1'b0, audio_overflow = 1'b0;
 
   integer output_count = 0;
   integer x;
@@ -75,7 +78,8 @@ module tb_video_pipeline_static_profile;
     .FIXED_SOURCE(2),
     .FORMAT_SELECT_MODE(1),
     .FIXED_FORMAT(2),
-    .ENABLE_SCALER(0)
+    .ENABLE_SCALER(0),
+    .ENABLE_HDMI_AUDIO(0)
   ) dut (
     .aclk(aclk), .aresetn(aresetn),
     .bram_en(bram_en), .bram_addr(bram_addr), .bram_dout(bram_dout),
@@ -95,7 +99,10 @@ module tb_video_pipeline_static_profile;
     .s_axi_bresp(s_axi_bresp), .s_axi_bvalid(s_axi_bvalid), .s_axi_bready(s_axi_bready),
     .s_axi_araddr(s_axi_araddr), .s_axi_arvalid(s_axi_arvalid), .s_axi_arready(s_axi_arready),
     .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
-    .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready)
+    .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
+    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
+    .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
+    .audio_overflow(audio_overflow)
   );
 
   always @(posedge aclk) begin
@@ -103,11 +110,11 @@ module tb_video_pipeline_static_profile;
       output_count <= 0;
     end else if (m_axis_video_tvalid && m_axis_video_tready) begin
       if (m_axis_video_tdata !== TEST_RBG_WORD)
-        $fatal(1, "unexpected passthrough color: %06x", m_axis_video_tdata);
+        $fatal(1, "直通像素颜色错误：%06x", m_axis_video_tdata);
       if (m_axis_video_tuser !== (output_count == 0))
-        $fatal(1, "SOF mismatch at output pixel %0d", output_count);
+        $fatal(1, "输出像素%0d的帧首标记不匹配", output_count);
       if (m_axis_video_tlast !== ((output_count % 640) == 639))
-        $fatal(1, "EOL mismatch at output pixel %0d", output_count);
+        $fatal(1, "输出像素%0d的行尾标记不匹配", output_count);
       output_count <= output_count + 1;
     end
   end
@@ -149,7 +156,20 @@ module tb_video_pipeline_static_profile;
     aresetn = 1'b1;
     repeat (3) @(posedge aclk);
 
-    // A fixed-source profile reports VDMA in STATUS even before the first frame.
+    // 固定关闭 HDMI 音频时，AXI-Lite 写入不能重新引入音频逻辑。
+    axi_read(6'h34, readback);
+    if (readback !== 32'd0 || hdmi_audio_enable !== 1'b0)
+      $fatal(1, "TEST_FAIL: 关闭HDMI音频profile的复位状态不匹配");
+    axi_write(6'h34, 32'd3);
+    axi_read(6'h34, readback);
+    if (readback !== 32'd2 || hdmi_audio_enable !== 1'b0 || audio_mute !== 1'b1)
+      $fatal(1, "TEST_FAIL: 关闭HDMI音频profile未将使能强制为低");
+    axi_write(6'h38, 32'd40000);
+    axi_read(6'h38, readback);
+    if (readback !== 32'd32768 || audio_gain_q15 !== 17'd32768)
+      $fatal(1, "TEST_FAIL: 音频关闭profile的增益饱和值不匹配");
+
+    // 固定源profile在首帧前的STATUS中也应报告VDMA。
     axi_read(6'h10, status_word);
     if (status_word[7:6] !== 2'd2)
       $fatal(1, "fixed source status did not report VDMA: %08x", status_word);
@@ -158,18 +178,18 @@ module tb_video_pipeline_static_profile;
     if (s_axis_hls_tready !== 1'b0)
       $fatal(1, "disabled HLS source asserted TREADY");
 
-    // Configure an exact 640x480 pass-through frame. No scaler is instantiated.
+    // 配置精确的640x480直通帧；该profile不实例化scaler。
     axi_write(6'h04, 32'h01e0_0280); // 640 x 480
     axi_write(6'h08, 32'd2560);
-    axi_write(6'h1c, 32'h01e0_0280); // active size 640 x 480
+    axi_write(6'h1c, 32'h01e0_0280); // 活动区域640x480
     axi_write(6'h20, 32'd0);
     axi_write(6'h24, 32'd0);
-    axi_write(6'h28, 32'd1); // x step 1, remainder 0
-    axi_write(6'h2c, 32'd1); // y step 1, remainder 0
+    axi_write(6'h28, 32'd1); // x步长为1、余数为0
+    axi_write(6'h2c, 32'd1); // y步长为1、余数为0
     axi_write(6'h00, CTRL_VDMA_XRGB_COMMIT);
     repeat (3) @(posedge aclk);
 
-    // Hold the first output beat under backpressure and check it remains stable.
+    // Hold the first output beat under 下游背压 and check it remains stable.
     @(negedge aclk);
     m_axis_video_tready = 1'b0;
     s_axis_vdma_tdata = TEST_XRGB_WORD;
@@ -179,13 +199,13 @@ module tb_video_pipeline_static_profile;
     #1;
     if (m_axis_video_tvalid !== 1'b1 || m_axis_video_tdata !== TEST_RBG_WORD ||
         m_axis_video_tuser !== 1'b1 || s_axis_vdma_tready !== 1'b0)
-      $fatal(1, "first beat did not honor output backpressure");
+      $fatal(1, "first beat did not honor output 下游背压");
     repeat (3) begin
       @(posedge aclk);
       #1;
       if (m_axis_video_tvalid !== 1'b1 || m_axis_video_tdata !== TEST_RBG_WORD ||
           m_axis_video_tuser !== 1'b1 || s_axis_vdma_tready !== 1'b0)
-        $fatal(1, "AXI-Stream beat changed while stalled");
+        $fatal(1, "AXI-Stream停顿期间数据拍发生变化");
     end
     @(negedge aclk);
     m_axis_video_tready = 1'b1;
@@ -197,10 +217,10 @@ module tb_video_pipeline_static_profile;
 
     axi_read(6'h10, status_word);
     if (status_word[4] !== 1'b1 || status_word[7:6] !== 2'd2)
-      $fatal(1, "frame monitor did not expose busy/fixed-source status: %08x", status_word);
+      $fatal(1, "帧监视器未报告busy/固定源状态：%08x", status_word);
 
-    // Leave a partial frame active, request an abort, and hold new input until
-    // a valid configuration commit restores the pass-through profile.
+    // 保留一个未完成帧，发出中止请求并保持新输入，直到
+    // 有效配置提交后恢复直通profile。
     @(negedge aclk);
     s_axis_vdma_tdata = TEST_XRGB_WORD;
     s_axis_vdma_tvalid = 1'b1;
@@ -211,25 +231,25 @@ module tb_video_pipeline_static_profile;
     s_axis_vdma_tvalid = 1'b0;
     axi_read(6'h10, status_word);
     if (status_word[4] !== 1'b1)
-      $fatal(1, "partial frame did not assert busy before stream abort");
+      $fatal(1, "流中止前未报告部分帧busy");
     axi_write(6'h00, CTRL_VDMA_XRGB_ABORT);
     repeat (3) @(posedge aclk);
     axi_read(6'h10, status_word);
     if (status_word[4] !== 1'b0 || status_word[1] !== 1'b1 ||
         status_word[0] !== 1'b1 || s_axis_vdma_tready !== 1'b0 ||
         m_axis_video_tvalid !== 1'b0)
-      $fatal(1, "abort did not clear busy and hold pass-through input: %08x", status_word);
+      $fatal(1, "中止后未清除busy或保持直通输入：%08x", status_word);
     axi_write(6'h00, CTRL_VDMA_XRGB_COMMIT);
     repeat (3) @(posedge aclk);
     axi_read(6'h10, status_word);
     if (status_word[4] !== 1'b0 || status_word[2] !== 1'b0 ||
         status_word[1] !== 1'b0 || status_word[0] !== 1'b1 ||
         s_axis_vdma_tready !== 1'b1)
-      $fatal(1, "valid commit did not release the held input: %08x", status_word);
+      $fatal(1, "有效提交未释放被保持的输入：%08x", status_word);
     @(negedge aclk);
     output_count = 0;
 
-    // Send a complete 640x480 frame after recovery. TUSER/TLAST and color pass through.
+    // 恢复后发送完整640x480帧，并检查TUSER/TLAST与颜色直通。
     for (y = 0; y < 480; y = y + 1) begin
       first_x = 0;
       for (x = first_x; x < 640; x = x + 1) begin
@@ -247,60 +267,60 @@ module tb_video_pipeline_static_profile;
     s_axis_vdma_tlast = 1'b0;
     repeat (2) @(posedge aclk);
     if (output_count != FRAME_PIXELS)
-      $fatal(1, "pass-through pixel count %0d, expected %0d", output_count, FRAME_PIXELS);
+      $fatal(1, "直通像素数为%0d，预期为%0d", output_count, FRAME_PIXELS);
     axi_read(6'h10, status_word);
     axi_read(6'h14, readback);
     if (status_word[4] !== 1'b0 || status_word[7:6] !== 2'd2 || readback !== 32'd1)
-      $fatal(1, "frame completion status/count mismatch: status=%08x count=%08x", status_word, readback);
+      $fatal(1, "帧完成状态/计数不匹配：status=%08x count=%08x", status_word, readback);
     axi_read(6'h18, readback);
     if (readback !== 32'd0)
-      $fatal(1, "unexpected error flags after valid frame: %08x", readback);
+      $fatal(1, "有效帧后出现意外错误标志：%08x", readback);
 
-    // A request for the compiled-out BRAM source must fail closed and set bit 4.
-    axi_write(6'h00, 32'h0000_0141); // enable + fixed XRGB + commit, source=BRAM
+    // 请求已裁剪的BRAM源必须安全失败并设置bit4。
+    axi_write(6'h00, 32'h0000_0141); // 使能、固定XRGB并提交，源选择为BRAM
     repeat (3) @(posedge aclk);
     axi_read(6'h18, readback);
     if (readback[4] !== 1'b1)
-      $fatal(1, "disabled source request did not set ERROR_FLAGS[4]: %08x", readback);
+      $fatal(1, "禁用源请求未设置ERROR_FLAGS[4]：%08x", readback);
     axi_read(6'h10, status_word);
     if (status_word[7:6] !== 2'd2 || status_word[4] !== 1'b0)
-      $fatal(1, "fixed source/status changed after rejected request: %08x", status_word);
+      $fatal(1, "请求被拒绝后固定源/状态发生变化：%08x", status_word);
     @(negedge aclk);
     s_axis_vdma_tdata = TEST_XRGB_WORD;
     s_axis_vdma_tvalid = 1'b1;
     s_axis_vdma_tuser = 1'b1;
     #1;
     if (m_axis_video_tvalid !== 1'b0 || s_axis_vdma_tready !== 1'b0)
-      $fatal(1, "rejected source request did not disable output");
+      $fatal(1, "拒绝源请求后仍有视频输出");
     @(negedge aclk);
     s_axis_vdma_tvalid = 1'b0;
     s_axis_vdma_tuser = 1'b0;
 
-    // Restore the valid profile and clear the sticky error.
+    // 恢复有效profile并清除sticky错误。
     axi_write(6'h00, CTRL_VDMA_XRGB_CLEAR);
     repeat (3) @(posedge aclk);
     axi_read(6'h18, readback);
     if (readback !== 32'd0)
-      $fatal(1, "CTRL clear-errors did not clear profile error: %08x", readback);
+      $fatal(1, "CTRL清错未清除profile错误：%08x", readback);
 
-    // A fixed-format mismatch also fails closed instead of reinterpreting pixels.
-    axi_write(6'h00, 32'h0000_0165); // enable + VDMA + BGRX8888 + commit
+    // 固定格式不匹配时安全拒绝，不重新解释像素。
+    axi_write(6'h00, 32'h0000_0165); // 使能VDMA并配置BGRX8888后提交
     repeat (3) @(posedge aclk);
     axi_read(6'h18, readback);
     if (readback[4] !== 1'b1)
-      $fatal(1, "fixed-format mismatch did not set ERROR_FLAGS[4]: %08x", readback);
+      $fatal(1, "固定格式不匹配未设置ERROR_FLAGS[4]：%08x", readback);
     if (m_axis_video_tvalid !== 1'b0)
-      $fatal(1, "fixed-format mismatch was not rejected fail-closed");
+      $fatal(1, "固定格式不匹配未安全拒绝");
     axi_write(6'h00, CTRL_VDMA_XRGB_CLEAR);
     repeat (3) @(posedge aclk);
     axi_read(6'h18, readback);
     if (readback !== 32'd0)
-      $fatal(1, "format-profile error did not clear: %08x", readback);
+      $fatal(1, "格式profile错误未清除：%08x", readback);
 
-    // A non-1:1 geometry is rejected instead of silently bypassing/scaling.
-    axi_write(6'h04, 32'h00f0_0140); // 320 x 240
+    // 非1:1几何配置应被拒绝，不能静默直通或缩放。
+    axi_write(6'h04, 32'h00f0_0140); // 320x240
     axi_write(6'h08, 32'd1280);
-    axi_write(6'h1c, 32'h00f0_0140); // active size 320 x 240
+    axi_write(6'h1c, 32'h00f0_0140); // 活动区域320x240
     axi_write(6'h20, 32'd0);
     axi_write(6'h24, 32'd0);
     axi_write(6'h28, 32'd1);
@@ -309,9 +329,9 @@ module tb_video_pipeline_static_profile;
     repeat (3) @(posedge aclk);
     axi_read(6'h18, readback);
     if (readback[4] !== 1'b1)
-      $fatal(1, "non-1:1 geometry did not set ERROR_FLAGS[4]: %08x", readback);
+      $fatal(1, "非1:1几何配置未设置ERROR_FLAGS[4]：%08x", readback);
     if (m_axis_video_tvalid !== 1'b0)
-      $fatal(1, "non-1:1 geometry was not rejected fail-closed");
+      $fatal(1, "非1:1几何配置未安全拒绝");
 
     $display("TEST_PASS: tb_video_pipeline_static_profile");
     $finish;
