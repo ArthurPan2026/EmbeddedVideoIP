@@ -16,12 +16,13 @@ foreach source [lsort [concat [glob -nocomplain -directory $hdl_dir *.sv] [glob 
   if {![file isfile $source]} { error "缺少 HDL 源文件： $source" }
   add_files -norecurse $source
 }
-set cdc_xdc [file join $repo_root ip video_pipeline_1_0 constraints embedded_video_ip_async_clock_groups.xdc]
+set cdc_xdc [file join $repo_root ip video_pipeline_1_0 constraints embedded_video_ip_clocks.xdc]
 if {![file isfile $cdc_xdc]} { error "缺少 EmbeddedVideoIP CDC XDC： $cdc_xdc" }
 add_files -norecurse $cdc_xdc
 set cdc_xdc_file [get_files -quiet $cdc_xdc]
 if {[llength $cdc_xdc_file] != 1} { error "CDC XDC 未加入打包工程" }
 set_property SCOPED_TO_REF embedded_video_ip_top $cdc_xdc_file
+set_property PROCESSING_ORDER LATE $cdc_xdc_file
 create_bd_design embedded_video_ip_video_out
 set aclk [create_bd_port -dir I -type clk -freq_hz 100000000 aclk]
 set_property CONFIG.FREQ_HZ 100000000 $aclk

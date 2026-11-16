@@ -262,7 +262,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv",
             "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v",
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_top.v",
-            "ip/video_pipeline_1_0/constraints/embedded_video_ip_async_clock_groups.xdc",
+            "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
             "ip/video_pipeline_1_0/hdl/audio_event_pulse_sync.sv",
             "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv",
             "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv",
