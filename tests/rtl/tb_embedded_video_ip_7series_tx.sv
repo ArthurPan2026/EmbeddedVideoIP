@@ -8,7 +8,8 @@ module tb_embedded_video_ip_7series_tx;
   localparam integer V_TOTAL=53, V_ACTIVE_SIZE=48;
   localparam integer FRAME_PIXELS=H_TOTAL*V_TOTAL;
   localparam integer EXPECTED_SAMPLES=(AUDIO_SAMPLE_RATE_HZ*FRAME_PIXELS+PIXEL_CLOCK_HZ/2)/PIXEL_CLOCK_HZ;
-  localparam logic [2:0] MODE_VIDEO=3'd1;
+  localparam logic [2:0] MODE_CONTROL=3'd0, MODE_VIDEO=3'd1,
+                         MODE_VIDEO_PREAMBLE=3'd2, MODE_VIDEO_GUARD=3'd4;
 
   logic pixel_clk=0, serial_clk=0, audio_pcm_clk=0, aresetn=0;
   logic [7:0] test_x=0;
@@ -38,6 +39,9 @@ module tb_embedded_video_ip_7series_tx;
   logic [9:0] ref_lane0,ref_lane1,ref_lane2;
   integer wait_cycles, packet_starts_before_cancel;
   logic [9:0] expected_samples_word;
+  integer video_boundary_state=0; // 0=等待前导，1=前导，2=保护带，3=活动视频
+  integer video_preamble_symbols=0, video_guard_symbols=0;
+  integer video_boundaries_checked=0;
 
   always #10 pixel_clk=~pixel_clk;
   always #2 serial_clk=~serial_clk;
@@ -140,6 +144,49 @@ module tb_embedded_video_ip_7series_tx;
 
   always @(posedge pixel_clk) begin
     #1;
+    if (aresetn) begin
+      case (dut.u_hdmi_mode_mux.mode_pipe[2])
+        MODE_VIDEO_PREAMBLE: begin
+          if ((video_boundary_state == 0) || (video_boundary_state == 3)) begin
+            video_boundary_state = 1;
+            video_preamble_symbols = 0;
+            video_guard_symbols = 0;
+          end
+          if (video_boundary_state != 1)
+            $fatal(1,"视频前导未从空闲态开始");
+          video_preamble_symbols = video_preamble_symbols + 1;
+        end
+        MODE_VIDEO_GUARD: begin
+          if (video_boundary_state == 1) begin
+            if (video_preamble_symbols != 8)
+              $fatal(1,"视频前导应为8拍，实际=%0d",video_preamble_symbols);
+            video_boundary_state = 2;
+            video_guard_symbols = 0;
+          end
+          if (video_boundary_state != 2)
+            $fatal(1,"未配对的视频保护带");
+          video_guard_symbols = video_guard_symbols + 1;
+        end
+        MODE_VIDEO: begin
+          if (video_boundary_state == 1)
+            $fatal(1,"视频前导后缺少保护带");
+          if (video_boundary_state == 2) begin
+            if (video_guard_symbols != 2)
+              $fatal(1,"视频保护带应为2拍，实际=%0d",video_guard_symbols);
+            video_boundaries_checked = video_boundaries_checked + 1;
+            video_boundary_state = 3;
+          end else if (video_boundary_state == 0) begin
+            $fatal(1,"活动视频没有对应的视频前导/保护带");
+          end
+        end
+        default: begin
+          if (video_boundary_state == 2)
+            $fatal(1,"视频保护带与首个活动视频符号之间出现控制/数据岛气泡");
+          if (video_boundary_state == 3)
+            video_boundary_state = 0;
+        end
+      endcase
+    end
     if (aresetn && dut.packet_start) begin
       packet_start_total=packet_start_total+1;
       if (measure_active && line_index>=V_ACTIVE_SIZE)
@@ -221,9 +268,11 @@ module tb_embedded_video_ip_7series_tx;
       $fatal(1,"VBlank没有持续产生逐行slot或数据包");
     if (color_seen!=7 || color_checks==0)
       $fatal(1,"纯红/绿/蓝颜色向量未覆盖或通道编码未检查：mask=%0d",color_seen);
+    if (video_boundaries_checked < 10)
+      $fatal(1,"视频前导/保护带边界检查次数不足：%0d",video_boundaries_checked);
 
-    $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d",
-             frame_samples_in,frame_samples_out,vblank_packet_starts);
+    $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d video_boundaries=%0d",
+             frame_samples_in,frame_samples_out,vblank_packet_starts,video_boundaries_checked);
     $finish;
   end
 endmodule

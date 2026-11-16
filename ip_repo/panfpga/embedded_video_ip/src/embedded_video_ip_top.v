@@ -96,8 +96,20 @@ module embedded_video_ip_top #(
   wire pixel_clk;
   wire serial_clk;
   wire pixel_aresetn;
+  wire hdmi_mmcm_locked;
+  wire pixel_reset_ext_asserted;
+  wire [5:0] hdmi_diag_status;
 
-  video_pipeline_v1_0_wrapper #(
+  hdmi_runtime_status u_hdmi_runtime_status (
+    .aclk(aclk), .aresetn(aresetn),
+    .pixel_clk(pixel_clk), .mmcm_locked_async(hdmi_mmcm_locked),
+    .pixel_resetn_async(pixel_aresetn),
+    .pixel_reset_ext_asserted_async(pixel_reset_ext_asserted),
+    .serial_clk(serial_clk),
+    .video_vsync_async(video_vsync), .status(hdmi_diag_status)
+  );
+
+  video_pipeline_v1_0 #(
     .MAX_INPUT_WIDTH(MAX_INPUT_WIDTH),
     .MAX_INPUT_HEIGHT(MAX_INPUT_HEIGHT),
     .BRAM_ADDR_WIDTH(BRAM_ADDR_WIDTH),
@@ -136,7 +148,7 @@ module embedded_video_ip_top #(
     .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
     .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow_aclk),
-    .audio_overflow(audio_overflow_aclk)
+    .audio_overflow(audio_overflow_aclk), .hdmi_diag_status(hdmi_diag_status)
   );
 
   embedded_video_ip_video_out_wrapper video_output (
@@ -146,7 +158,8 @@ module embedded_video_ip_top #(
     .s_axis_video_tlast(m_axis_video_tlast),
     .video_rgb(video_rgb), .video_de(video_de), .video_hsync(video_hsync),
     .video_vsync(video_vsync), .pixel_clk(pixel_clk), .serial_clk(serial_clk),
-    .pixel_aresetn(pixel_aresetn)
+    .pixel_aresetn(pixel_aresetn), .hdmi_mmcm_locked(hdmi_mmcm_locked),
+    .pixel_reset_ext_asserted(pixel_reset_ext_asserted)
   );
 
   embedded_video_ip_7series_tx #(

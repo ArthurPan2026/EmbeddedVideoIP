@@ -10,7 +10,7 @@
 | `0x04` | `INPUT_SIZE` | RW | bits `[15:0]` width，`[31:16]` height |
 | `0x08` | `STRIDE_BYTES` | RW | 源图像相邻行首地址的字节间距 |
 | `0x0C` | `BRAM_BASE_WORD` | RW | BRAM reader 起始地址，单位为 32-bit word |
-| `0x10` | `STATUS` | RO | bits `[7:6]` 活动视频源；bit 5 BRAM busy；bit 4 pipeline busy；bit 2 配置待提交；bit 1 stream held；bit 0 video enabled |
+| `0x10` | `STATUS` | RO | bits [13:8] HDMI运行态遥测：bit 13 像素复位外部复位仍有效；bit 12 像素时钟已检测到运行；bit 11 MMCM 已锁定；bit 10 VSYNC 已发生变化；bit 9 串行时钟已检测到运行；bit 8 像素复位已释放；bits `[7:6]` 活动视频源；bit 5 BRAM busy；bit 4 pipeline busy；bit 2 配置待提交；bit 1 stream held；bit 0 video enabled |
 | `0x14` | `FRAME_COUNT` | RO | 已完成输出帧数 |
 | `0x18` | `ERROR_FLAGS` | RO | 视频 scaler/profile/BRAM sticky error 标志；`CTRL` bit 10 清除 |
 | `0x1C` | `ACTIVE_SIZE_CFG` | RW | bits `[9:0]` active width，`[25:16]` active height |

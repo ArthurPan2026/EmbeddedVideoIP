@@ -426,7 +426,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>9f262866</spirit:value>
+            <spirit:value>bb5fbb99</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -460,7 +460,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>00444b6f</spirit:value>
+            <spirit:value>7cd229b4</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -493,7 +493,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>c6a8f5be</spirit:value>
+            <spirit:value>a784f4a1</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -1334,11 +1334,6 @@
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
       <spirit:file>
-        <spirit:name>src/video_pipeline_v1_0_wrapper.v</spirit:name>
-        <spirit:fileType>verilogSource</spirit:fileType>
-        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
-      </spirit:file>
-      <spirit:file>
         <spirit:name>src/audio_event_pulse_sync.sv</spirit:name>
         <spirit:fileType>systemVerilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
@@ -1419,6 +1414,11 @@
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
       <spirit:file>
+        <spirit:name>src/hdmi_runtime_status.sv</spirit:name>
+        <spirit:fileType>systemVerilogSource</spirit:fileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+      </spirit:file>
+      <spirit:file>
         <spirit:name>src/hdmi_terc4_encoder.sv</spirit:name>
         <spirit:fileType>systemVerilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
@@ -1461,7 +1461,7 @@
       <spirit:file>
         <spirit:name>src/embedded_video_ip_top.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
-        <spirit:userFileType>CHECKSUM_22a3d2d1</spirit:userFileType>
+        <spirit:userFileType>CHECKSUM_cfb05b1e</spirit:userFileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
@@ -1574,11 +1574,6 @@
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
       <spirit:file>
-        <spirit:name>src/video_pipeline_v1_0_wrapper.v</spirit:name>
-        <spirit:fileType>verilogSource</spirit:fileType>
-        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
-      </spirit:file>
-      <spirit:file>
         <spirit:name>src/audio_event_pulse_sync.sv</spirit:name>
         <spirit:fileType>systemVerilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
@@ -1655,6 +1650,11 @@
       </spirit:file>
       <spirit:file>
         <spirit:name>src/hdmi_pcm_packet_source.sv</spirit:name>
+        <spirit:fileType>systemVerilogSource</spirit:fileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+      </spirit:file>
+      <spirit:file>
+        <spirit:name>src/hdmi_runtime_status.sv</spirit:name>
         <spirit:fileType>systemVerilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
@@ -1849,7 +1849,7 @@
       </spirit:file>
     </spirit:fileSet>
   </spirit:fileSets>
-  <spirit:description>EmbeddedVideoIP product release 0.2.0-dev.3; composite 7-series HDMI video with optional audio.</spirit:description>
+  <spirit:description>EmbeddedVideoIP product release 0.2.0-dev.4; composite 7-series HDMI video with optional audio.</spirit:description>
   <spirit:parameters>
     <spirit:parameter>
       <spirit:name>MAX_INPUT_WIDTH</spirit:name>
@@ -1944,7 +1944,7 @@
       <xilinx:taxonomies>
         <xilinx:taxonomy>/Video</xilinx:taxonomy>
       </xilinx:taxonomies>
-      <xilinx:displayName>EmbeddedVideoIP 0.2.0-dev.3</xilinx:displayName>
+      <xilinx:displayName>EmbeddedVideoIP 0.2.0-dev.4</xilinx:displayName>
       <xilinx:definitionSource>package_project</xilinx:definitionSource>
       <xilinx:xpmLibraries>
         <xilinx:xpmLibrary>XPM_CDC</xilinx:xpmLibrary>
@@ -1952,13 +1952,13 @@
       </xilinx:xpmLibraries>
       <xilinx:vendorDisplayName>Personal FPGA IP</xilinx:vendorDisplayName>
       <xilinx:coreRevision>1</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-11-16T02:01:13Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-11-16T07:15:07Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2.1</xilinx:xilinxVersion>
       <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="44ef7d6b"/>
       <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="6a6443ca"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="40056d1e"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="7d118072"/>
       <xilinx:checksum xilinx:scope="ports" xilinx:value="bfb8427f"/>
       <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="e50fee51"/>
       <xilinx:checksum xilinx:scope="parameters" xilinx:value="d3db1aa2"/>

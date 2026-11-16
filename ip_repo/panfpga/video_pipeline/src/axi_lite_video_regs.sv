@@ -50,7 +50,8 @@ module axi_lite_video_regs #(
   output logic audio_mute,
   output logic [16:0] audio_gain_q15,
   input logic audio_underflow,
-  input logic audio_overflow
+  input logic audio_overflow,
+  input logic [5:0] hdmi_diag_status
 );
   localparam logic [ADDR_WIDTH-1:0] REG_CTRL = 'h00;
   localparam logic [ADDR_WIDTH-1:0] REG_SIZE = 'h04;
@@ -141,7 +142,8 @@ module axi_lite_video_regs #(
       REG_SIZE: read_value = size_reg;
       REG_STRIDE: read_value = stride_reg;
       REG_BRAM_BASE: read_value = bram_base_reg;
-      REG_STATUS: read_value = {24'd0, active_source, bram_busy, busy,
+      REG_STATUS: read_value = {18'd0, hdmi_diag_status,
+                                active_source, bram_busy, busy,
                                 1'b0, cfg_pending, stream_hold, active_enable};
       REG_FRAME_COUNT: read_value = frame_count;
       REG_ERRORS: read_value = error_flags;

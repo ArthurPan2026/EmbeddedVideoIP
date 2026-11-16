@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define VIDEO_OUT_VERSION "0.2.0-dev.1"
+#define VIDEO_OUT_VERSION "0.2.0-dev.2"
 
 #define VIDEO_OUT_OUTPUT_WIDTH 640U
 #define VIDEO_OUT_OUTPUT_HEIGHT 480U
@@ -63,6 +63,12 @@ typedef struct {
     uint8_t enabled;
     uint8_t stream_held;
     uint8_t config_pending;
+    uint8_t hdmi_pixel_reset_released;
+    uint8_t hdmi_serial_clock_seen;
+    uint8_t hdmi_vsync_seen;
+    uint8_t hdmi_mmcm_locked;
+    uint8_t hdmi_pixel_clock_seen;
+    uint8_t hdmi_pixel_reset_ext_asserted;
 } VideoOutStatus;
 
 int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,

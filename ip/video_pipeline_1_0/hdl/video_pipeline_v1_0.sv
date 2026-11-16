@@ -77,7 +77,8 @@ module video_pipeline_v1_0 #(
   output logic audio_mute,
   output logic [16:0] audio_gain_q15,
   input logic audio_underflow,
-  input logic audio_overflow
+  input logic audio_overflow,
+  input logic [5:0] hdmi_diag_status
 );
   logic cfg_enable, cfg_scale, cfg_stretch;
   logic [1:0] cfg_source, cfg_format;
@@ -145,7 +146,7 @@ module video_pipeline_v1_0 #(
     .frame_count(cfg_frame_count), .error_flags(cfg_error_flags),
     .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
-    .audio_overflow(audio_overflow)
+    .audio_overflow(audio_overflow), .hdmi_diag_status(hdmi_diag_status)
   );
 
   always_comb begin

@@ -36,6 +36,8 @@ set serial_clk_port [create_bd_port -dir O -type clk serial_clk]
 set_property CONFIG.FREQ_HZ 125892857 $serial_clk_port
 set pixel_reset_port [create_bd_port -dir O -type rst pixel_aresetn]
 set_property CONFIG.POLARITY ACTIVE_LOW $pixel_reset_port
+set pixel_locked_port [create_bd_port -dir O hdmi_mmcm_locked]
+set pixel_reset_ext_port [create_bd_port -dir O pixel_reset_ext_asserted]
 set video_out [create_bd_cell -type ip -vlnv xilinx.com:ip:v_axi4s_vid_out:4.0 video_out]
 set_property CONFIG.C_HAS_ASYNC_CLK 1 $video_out
 set vtc [create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc:6.2 vtc]
@@ -63,6 +65,8 @@ set_property -dict [list \
   CONFIG.USE_RESET {true} \
 ] $clk_wiz
 set rst [create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 pixel_reset]
+# ext_reset_in接反相后的低有效系统复位；aux_reset_in固定接0，因此两种输入都配置为高有效。
+set_property -dict [list CONFIG.C_EXT_RESET_HIGH {1} CONFIG.C_AUX_RESET_HIGH {1}] $rst
 set inv [create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 reset_invert]
 set_property -dict [list CONFIG.C_OPERATION {not} CONFIG.C_SIZE {1}] $inv
 set zero [create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 reset_zero]
@@ -75,9 +79,11 @@ connect_bd_net $resetn [get_bd_pins $clk_wiz/resetn] [get_bd_pins $inv/Op1]
 connect_bd_net [get_bd_pins $clk_wiz/clk_out1] [get_bd_pins $vtc/clk] [get_bd_pins $video_out/vid_io_out_clk] [get_bd_pins $rst/slowest_sync_clk]
 connect_bd_net [get_bd_pins $clk_wiz/clk_out2] $serial_clk_port
 connect_bd_net [get_bd_pins $clk_wiz/clk_out1] $pixel_clk_port
-connect_bd_net [get_bd_pins $clk_wiz/locked] [get_bd_pins $video_out/aclken] [get_bd_pins $video_out/vid_io_out_ce] [get_bd_pins $vtc/clken] [get_bd_pins $rst/dcm_locked]
+connect_bd_net [get_bd_pins $clk_wiz/locked] $pixel_locked_port \
+  [get_bd_pins $video_out/aclken] [get_bd_pins $video_out/vid_io_out_ce] \
+  [get_bd_pins $vtc/clken] [get_bd_pins $rst/dcm_locked]
 connect_bd_net [get_bd_pins $video_out/vtg_ce] [get_bd_pins $vtc/gen_clken]
-connect_bd_net [get_bd_pins $inv/Res] [get_bd_pins $rst/ext_reset_in]
+connect_bd_net [get_bd_pins $inv/Res] $pixel_reset_ext_port [get_bd_pins $rst/ext_reset_in]
 connect_bd_net [get_bd_pins $zero/dout] [get_bd_pins $rst/aux_reset_in] [get_bd_pins $rst/mb_debug_sys_rst] [get_bd_pins $video_out/fid]
 connect_bd_net [get_bd_pins $rst/peripheral_aresetn] $pixel_reset_port [get_bd_pins $vtc/resetn]
 connect_bd_net [get_bd_pins $rst/peripheral_reset] [get_bd_pins $video_out/vid_io_out_reset]

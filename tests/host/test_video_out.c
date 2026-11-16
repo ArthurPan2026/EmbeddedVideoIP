@@ -92,7 +92,7 @@ static int configure_vdma(void *context, uint64_t base, uint32_t width,
 
 int main(void)
 {
-    CHECK(strcmp(VIDEO_OUT_VERSION, "0.2.0-dev.1") == 0, "PS库版本不匹配");
+    CHECK(strcmp(VIDEO_OUT_VERSION, "0.2.0-dev.2") == 0, "PS库版本不匹配");
     FakeVideo fake;
     VideoOutIo io;
     VideoOutConfig cfg;
@@ -183,8 +183,14 @@ int main(void)
     CHECK(VideoOut_Configure(&io, &cfg, 0U, 0U) == 0,
           "有效BRAM配置被拒绝");
     CHECK(fake.vdma_calls == 0U, "BRAM模式意外配置了VDMA");
-    fake.regs[4] = (2U << 6) | (1U << 4); /* 当前源和忙状态 */
+    fake.regs[4] = (2U << 6) | (1U << 4) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13); /* 当前源、忙状态和HDMI遥测 */
     CHECK(VideoOut_GetStatus(&io, &status) == 0 &&
+          status.hdmi_pixel_reset_released == 1U &&
+          status.hdmi_serial_clock_seen == 1U &&
+          status.hdmi_vsync_seen == 1U &&
+          status.hdmi_mmcm_locked == 1U &&
+          status.hdmi_pixel_clock_seen == 1U &&
+          status.hdmi_pixel_reset_ext_asserted == 1U &&
           status.busy == 1U && status.active_width == 320U &&
           status.active_height == 240U && status.frame_count == 123U &&
           status.error_flags == 0x20U, "状态寄存器解析不匹配");

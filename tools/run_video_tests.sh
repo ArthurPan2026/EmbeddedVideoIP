@@ -65,6 +65,8 @@ run_xsim tb_video_pipeline_static_profile \
   "$hdl/axis_video_mux3.sv" "$hdl/video_bram_rgb565_reader.sv" \
   "$hdl/axi_lite_video_regs.sv" "$hdl/video_pipeline_v1_0.sv" \
   "$repo_root/tests/rtl/tb_video_pipeline_static_profile.sv"
+run_xsim tb_hdmi_runtime_status \
+  "$hdl/hdmi_runtime_status.sv" "$repo_root/tests/rtl/tb_hdmi_runtime_status.sv"
 
 run_xsim tb_hdmi_primitives \
   "$hdl/audio_gain_q15.sv" "$hdl/hdmi_terc4_encoder.sv" \

@@ -2,7 +2,7 @@
 
 ## 产品边界
 
-当前开发版本为 0.2.0-dev.1，PS C 库和发布包共用该版本。Vivado 外部 VLNV 固定为 panfpga.org:video:embedded_video_ip:1.0，作为 IP-XACT 兼容标识独立维护。消费者在 Vivado IP Integrator 中只实例化一个顶层组件：`panfpga.org:video:embedded_video_ip:1.0`。该组件内部组合现有视频处理核、视频输出桥、VTC、Zybo Z7-20 时钟 profile 和 7-series HDMI 发送适配器；消费者不在自己的 BD 中逐块连接 scaler、VTC、`v_axi4s_vid_out` 或 TMDS 发送逻辑。
+当前开发版本为 0.2.0-dev.4，PS C 库和发布包共用该版本。Vivado 外部 VLNV 固定为 panfpga.org:video:embedded_video_ip:1.0，作为 IP-XACT 兼容标识独立维护。消费者在 Vivado IP Integrator 中只实例化一个顶层组件：`panfpga.org:video:embedded_video_ip:1.0`。该组件内部组合现有视频处理核、视频输出桥、VTC、Zybo Z7-20 时钟 profile 和 7-series HDMI 发送适配器；消费者不在自己的 BD 中逐块连接 scaler、VTC、`v_axi4s_vid_out` 或 TMDS 发送逻辑。
 
 EmbeddedVideoIP 是配套的 PL+PS 产品：PL 侧提供一个 Vivado IP Catalog 顶层组件，PS 侧提供匹配的通用 C API 与 Zynq-7000 adapter。PS/DDR 控制器、源数据生产器、系统时钟/复位及板级引脚仍由消费工程提供。
 

@@ -89,13 +89,13 @@ module hdmi_line_slot_scheduler #(
     symbol_mode = MODE_CONTROL;
     packet_start = 1'b0;
 
-    if (lookahead_de_rise) begin
+    // 让模式管线和延迟后的DE/编码器首符号按同一边沿对齐。
+    // 上升沿当拍计数器只置1；下一拍开始输出8拍前导，再输出2拍保护带。
+    if (video_preamble_count >= 4'd1 &&
+        video_preamble_count <= PREAMBLE_CYCLES) begin
       symbol_mode = MODE_VIDEO_PREAMBLE;
-    end else if (video_preamble_count >= 4'd1 &&
-                 video_preamble_count < PREAMBLE_CYCLES) begin
-      symbol_mode = MODE_VIDEO_PREAMBLE;
-    end else if (video_preamble_count == PREAMBLE_CYCLES ||
-                 video_preamble_count == PREAMBLE_CYCLES + 1) begin
+    end else if (video_preamble_count > PREAMBLE_CYCLES &&
+                 video_preamble_count <= VIDEO_LOOKAHEAD_CYCLES) begin
       symbol_mode = MODE_VIDEO_GUARD;
     end else if (video_de_delayed) begin
       symbol_mode = MODE_VIDEO;

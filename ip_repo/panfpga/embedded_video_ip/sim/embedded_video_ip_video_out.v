@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-//Date        : Mon Nov 16 10:01:02 2026
+//Date        : Mon Nov 16 15:14:56 2026
 //Host        : pzy-fpga running 64-bit Ubuntu 22.04.5 LTS
 //Command     : generate_target embedded_video_ip_video_out.bd
 //Design      : embedded_video_ip_video_out
@@ -14,9 +14,11 @@
 module embedded_video_ip_video_out
    (aclk,
     aresetn,
+    hdmi_mmcm_locked,
     hdmi_ref_clk,
     pixel_aresetn,
     pixel_clk,
+    pixel_reset_ext_asserted,
     s_axis_video_tdata,
     s_axis_video_tlast,
     s_axis_video_tready,
@@ -29,9 +31,11 @@ module embedded_video_ip_video_out
     video_vsync);
   (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 CLK.ACLK CLK" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME CLK.ACLK, ASSOCIATED_BUSIF s_axis_video, CLK_DOMAIN embedded_video_ip_video_out_aclk, FREQ_HZ 100000000, FREQ_TOLERANCE_HZ 0, INSERT_VIP 0, PHASE 0.0" *) input aclk;
   (* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 RST.ARESETN RST" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME RST.ARESETN, INSERT_VIP 0, POLARITY ACTIVE_LOW" *) input aresetn;
+  output hdmi_mmcm_locked;
   (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 CLK.HDMI_REF_CLK CLK" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME CLK.HDMI_REF_CLK, CLK_DOMAIN embedded_video_ip_video_out_hdmi_ref_clk, FREQ_HZ 50000000, FREQ_TOLERANCE_HZ 0, INSERT_VIP 0, PHASE 0.0" *) input hdmi_ref_clk;
   (* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 RST.PIXEL_ARESETN RST" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME RST.PIXEL_ARESETN, INSERT_VIP 0, POLARITY ACTIVE_LOW" *) output [0:0]pixel_aresetn;
   (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 CLK.PIXEL_CLK CLK" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME CLK.PIXEL_CLK, CLK_DOMAIN /clk_wiz_clk_out1, FREQ_HZ 25178571, FREQ_TOLERANCE_HZ 0, INSERT_VIP 0, PHASE 0.0" *) output pixel_clk;
+  output [0:0]pixel_reset_ext_asserted;
   (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_video TDATA" *) (* X_INTERFACE_MODE = "Slave" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME s_axis_video, CLK_DOMAIN embedded_video_ip_video_out_aclk, FREQ_HZ 100000000, HAS_TKEEP 0, HAS_TLAST 1, HAS_TREADY 1, HAS_TSTRB 0, INSERT_VIP 0, LAYERED_METADATA undef, PHASE 0.0, TDATA_NUM_BYTES 3, TDEST_WIDTH 0, TID_WIDTH 0, TUSER_WIDTH 1" *) input [23:0]s_axis_video_tdata;
   (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_video TLAST" *) input s_axis_video_tlast;
   (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis_video TREADY" *) output s_axis_video_tready;
@@ -45,12 +49,12 @@ module embedded_video_ip_video_out
 
   wire aclk;
   wire aresetn;
-  wire clk_wiz_locked;
+  wire hdmi_mmcm_locked;
   wire hdmi_ref_clk;
   wire [0:0]pixel_aresetn;
   wire pixel_clk;
+  wire [0:0]pixel_reset_ext_asserted;
   wire [0:0]pixel_reset_peripheral_reset;
-  wire [0:0]reset_invert_Res;
   wire [0:0]reset_zero_dout;
   wire [23:0]s_axis_video_tdata;
   wire s_axis_video_tlast;
@@ -73,24 +77,24 @@ module embedded_video_ip_video_out
        (.clk_in1(hdmi_ref_clk),
         .clk_out1(pixel_clk),
         .clk_out2(serial_clk),
-        .locked(clk_wiz_locked),
+        .locked(hdmi_mmcm_locked),
         .resetn(aresetn));
   embedded_video_ip_video_out_pixel_reset_0 pixel_reset
        (.aux_reset_in(reset_zero_dout),
-        .dcm_locked(clk_wiz_locked),
-        .ext_reset_in(reset_invert_Res),
+        .dcm_locked(hdmi_mmcm_locked),
+        .ext_reset_in(pixel_reset_ext_asserted),
         .mb_debug_sys_rst(reset_zero_dout),
         .peripheral_aresetn(pixel_aresetn),
         .peripheral_reset(pixel_reset_peripheral_reset),
         .slowest_sync_clk(pixel_clk));
   embedded_video_ip_video_out_reset_invert_0 reset_invert
        (.Op1(aresetn),
-        .Res(reset_invert_Res));
+        .Res(pixel_reset_ext_asserted));
   embedded_video_ip_video_out_reset_zero_0 reset_zero
        (.dout(reset_zero_dout));
   embedded_video_ip_video_out_video_out_0 video_out
        (.aclk(aclk),
-        .aclken(clk_wiz_locked),
+        .aclken(hdmi_mmcm_locked),
         .aresetn(aresetn),
         .fid(reset_zero_dout),
         .s_axis_video_tdata(s_axis_video_tdata),
@@ -101,7 +105,7 @@ module embedded_video_ip_video_out
         .vid_active_video(video_de),
         .vid_data(video_rgb),
         .vid_hsync(video_hsync),
-        .vid_io_out_ce(clk_wiz_locked),
+        .vid_io_out_ce(hdmi_mmcm_locked),
         .vid_io_out_clk(pixel_clk),
         .vid_io_out_reset(pixel_reset_peripheral_reset),
         .vid_vsync(video_vsync),
@@ -115,7 +119,7 @@ module embedded_video_ip_video_out
   embedded_video_ip_video_out_vtc_0 vtc
        (.active_video_out(vtc_vtiming_out_ACTIVE_VIDEO),
         .clk(pixel_clk),
-        .clken(clk_wiz_locked),
+        .clken(hdmi_mmcm_locked),
         .gen_clken(video_out_vtg_ce),
         .hblank_out(vtc_vtiming_out_HBLANK),
         .hsync_out(vtc_vtiming_out_HSYNC),

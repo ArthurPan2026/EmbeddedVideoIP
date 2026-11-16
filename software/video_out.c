@@ -273,6 +273,12 @@ int VideoOut_GetStatus(const VideoOutIo *io, VideoOutStatus *status)
     status->active_height = (active_size >> 16) & 0x3ffU;
     status->frame_count = io->read_reg(io->context, REG_FRAME_COUNT);
     status->error_flags = io->read_reg(io->context, REG_ERRORS);
+    status->hdmi_pixel_reset_released = (uint8_t)((state >> 8) & 1U);
+    status->hdmi_serial_clock_seen = (uint8_t)((state >> 9) & 1U);
+    status->hdmi_vsync_seen = (uint8_t)((state >> 10) & 1U);
+    status->hdmi_mmcm_locked = (uint8_t)((state >> 11) & 1U);
+    status->hdmi_pixel_clock_seen = (uint8_t)((state >> 12) & 1U);
+    status->hdmi_pixel_reset_ext_asserted = (uint8_t)((state >> 13) & 1U);
     return 0;
 }
 

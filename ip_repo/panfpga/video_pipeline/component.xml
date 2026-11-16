@@ -376,7 +376,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>97215747</spirit:value>
+            <spirit:value>b08189f4</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -392,7 +392,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>97215747</spirit:value>
+            <spirit:value>b08189f4</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -1221,7 +1221,7 @@
       <spirit:file>
         <spirit:name>src/video_pipeline_v1_0_wrapper.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
-        <spirit:userFileType>CHECKSUM_c85b27a5</spirit:userFileType>
+        <spirit:userFileType>CHECKSUM_ea33dcee</spirit:userFileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
@@ -1273,7 +1273,7 @@
       </spirit:file>
     </spirit:fileSet>
   </spirit:fileSets>
-  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.2.0-dev.3.</spirit:description>
+  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.2.0-dev.4.</spirit:description>
   <spirit:parameters>
     <spirit:parameter>
       <spirit:name>MAX_INPUT_WIDTH</spirit:name>
@@ -1389,17 +1389,17 @@
       <xilinx:taxonomies>
         <xilinx:taxonomy>/Video</xilinx:taxonomy>
       </xilinx:taxonomies>
-      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.2.0-dev.3</xilinx:displayName>
+      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.2.0-dev.4</xilinx:displayName>
       <xilinx:definitionSource>package_project</xilinx:definitionSource>
       <xilinx:vendorDisplayName>Personal FPGA IP</xilinx:vendorDisplayName>
       <xilinx:coreRevision>1</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-11-16T02:00:56Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-11-16T07:14:49Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2.1</xilinx:xilinxVersion>
       <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="b9a3da76"/>
       <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="6a6443ca"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="5bfc96cf"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="6e9f41a8"/>
       <xilinx:checksum xilinx:scope="ports" xilinx:value="45ba7db9"/>
       <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="831a59ed"/>
       <xilinx:checksum xilinx:scope="parameters" xilinx:value="a61791df"/>

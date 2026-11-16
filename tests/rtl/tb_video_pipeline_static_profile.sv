@@ -102,7 +102,7 @@ module tb_video_pipeline_static_profile;
     .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
     .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
-    .audio_overflow(audio_overflow)
+    .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000)
   );
 
   always @(posedge aclk) begin

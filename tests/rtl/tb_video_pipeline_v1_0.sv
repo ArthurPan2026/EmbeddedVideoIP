@@ -21,6 +21,7 @@ module tb_video_pipeline_v1_0;
   wire hdmi_audio_enable, audio_mute;
   wire [16:0] audio_gain_q15;
   logic audio_underflow=0, audio_overflow=0;
+  logic [5:0] hdmi_diag_status=6'b111111;
 
   logic [5:0] awaddr=0, araddr=0;
   logic awvalid=0, wvalid=0, bready=0, arvalid=0, rready=0;
@@ -58,7 +59,8 @@ module tb_video_pipeline_v1_0;
     .s_axi_araddr(araddr),.s_axi_arvalid(arvalid),.s_axi_arready(arready),
     .s_axi_rdata(rdata),.s_axi_rresp(rresp),.s_axi_rvalid(rvalid),.s_axi_rready(rready),
     .hdmi_audio_enable(hdmi_audio_enable),.audio_mute(audio_mute),
-    .audio_gain_q15(audio_gain_q15),.audio_underflow(audio_underflow),.audio_overflow(audio_overflow)
+    .audio_gain_q15(audio_gain_q15),.audio_underflow(audio_underflow),.audio_overflow(audio_overflow),
+    .hdmi_diag_status(hdmi_diag_status)
   );
 
   always @(posedge clk) begin
@@ -201,6 +203,7 @@ module tb_video_pipeline_v1_0;
     if(output_index!=16) $fatal(1,"TEST_FAIL: 顶层输出像素数为%0d",output_index);
     axi_read(6'h10,readback);
     if(readback[7:6]!==2'd2) $fatal(1,"TEST_FAIL: 活动视频源不是VDMA：%h",readback);
+    if(readback[13:8]!==6'b111111) $fatal(1,"TEST_FAIL: HDMI运行态STATUS遥测未读回：%h",readback);
 
     // HLS视频源通过相同的AXI4-Stream Video源选择器输入。
     @(negedge clk); output_index=0;

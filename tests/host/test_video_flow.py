@@ -242,6 +242,16 @@ class VideoFlowProfileTests(unittest.TestCase):
                 {"synth:generic", "synth:vdma_scaler_lutram", "synth:vdma_scaler_bram", "synth:passthrough"},
             )
 
+class CompositeResetPolarityTests(unittest.TestCase):
+    def test_hdmi_pixel_reset_constant_is_inactive_for_aux_polarity(self):
+        root = Path(__file__).resolve().parents[2]
+        script = (root / "tools" / "package_composite_ip.tcl").read_text(encoding="utf-8")
+        self.assertIn("CONFIG.C_AUX_RESET_HIGH {1}", script)
+        self.assertIn("CONFIG.C_EXT_RESET_HIGH {1}", script)
+        self.assertIn("connect_bd_net [get_bd_pins $zero/dout] [get_bd_pins $rst/aux_reset_in]", script)
+        self.assertIn("[get_bd_pins $inv/Res] $pixel_reset_ext_port [get_bd_pins $rst/ext_reset_in]", script)
+
+
 class VideoFlowInputPartitionTests(unittest.TestCase):
     def make_source_tree(self, root: Path) -> None:
         files = [
@@ -267,6 +277,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv",
             "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv",
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_runtime_status.sv",
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv",
@@ -295,6 +306,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "tests/rtl/tb_video_bram_rgb565_reader.sv",
             "tests/rtl/tb_video_pipeline_v1_0.sv",
             "tests/rtl/tb_video_pipeline_static_profile.sv",
+            "tests/rtl/tb_hdmi_runtime_status.sv",
             "tests/rtl/tb_hdmi_primitives.sv",
             "tests/rtl/tb_hdmi_audio_packets.sv",
             "tests/rtl/tb_audio_pcm_async_fifo.sv",
