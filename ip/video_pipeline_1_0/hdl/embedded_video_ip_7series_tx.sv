@@ -49,7 +49,9 @@ module embedded_video_ip_7series_tx #(
   logic packet_start;
   logic line_prepare, packet_cancel;
   logic packet_valid, packet_ready, packet_loaded, packet_active, packet_done;
+  logic packet_loaded_avi;
   logic packet_cancel_link;
+  logic packet_cancel_sched;
   logic [23:0] packet_header;
   logic [55:0] packet_sub0, packet_sub1, packet_sub2, packet_sub3;
   logic [8:0] packet_data;
@@ -121,6 +123,7 @@ module embedded_video_ip_7series_tx #(
     .pixel_clk(pixel_clk), .resetn(pixel_aresetn),
     .packet_valid(packet_valid), .packet_ready(packet_ready), .packet_cancel(packet_cancel),
     .packet_cancel_link(packet_cancel_link), .packet_start(packet_start), .packet_loaded(packet_loaded),
+    .packet_loaded_avi(packet_loaded_avi),
     .packet_header(packet_header), .packet_sub0(packet_sub0), .packet_sub1(packet_sub1),
     .packet_sub2(packet_sub2), .packet_sub3(packet_sub3),
     .packet_active(packet_active), .packet_data(packet_data), .packet_done(packet_done)
@@ -136,9 +139,16 @@ module embedded_video_ip_7series_tx #(
     .packet_active(packet_active),
     .video_de_lookahead(video_de), .video_de_delayed(de_pipe[VIDEO_LOOKAHEAD_CYCLES]),
     .hsync_delayed(hsync_pipe[VIDEO_LOOKAHEAD_CYCLES]),
-    .packet_loaded(packet_loaded), .packet_offer(packet_valid), .packet_cancel(packet_cancel_link),
+    .packet_loaded(packet_loaded), .packet_offer(packet_valid), .packet_cancel(packet_cancel_sched),
     .line_prepare(line_prepare), .symbol_mode(symbol_mode), .packet_start(packet_start)
   );
+
+  // Audio disable may cancel a not-yet-started audio packet. Preserve an AVI
+  // InfoFrame so its data island retains legal HDMI framing.
+  assign packet_cancel_sched = packet_cancel_link |
+                               (packet_cancel &&
+                                !(packet_loaded_avi ||
+                                  (packet_valid && packet_header[7:0] == 8'h82)));
 
   // video_rgb按RBG解释，显式把B/G/R送往TMDS通道0/1/2。
   hdmi_tmds_video_encoder u_digilent_video_encoder (

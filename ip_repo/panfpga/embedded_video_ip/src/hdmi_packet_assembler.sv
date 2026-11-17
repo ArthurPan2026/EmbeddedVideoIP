@@ -12,6 +12,7 @@ module hdmi_packet_assembler #(
   input  logic        packet_cancel_link,
   input  logic        packet_start,
   output logic        packet_loaded,
+  output logic        packet_loaded_avi,
   input  logic [23:0] packet_header,
   input  logic [55:0] packet_sub0,
   input  logic [55:0] packet_sub1,
@@ -32,6 +33,9 @@ module hdmi_packet_assembler #(
   integer i;
 
   assign packet_ready = !packet_loaded;
+  // AVI InfoFrames remain legal while HDMI audio is disabled; callers may
+  // defer an audio-only cancellation while one is already loaded.
+  assign packet_loaded_avi = packet_loaded && (active_header[7:0] == 8'h82);
 
   hdmi_bch_ecc #(.DATA_WIDTH(24)) u_header_bch (.data_in(active_header), .ecc_out(header_ecc));
   hdmi_bch_ecc #(.DATA_WIDTH(56)) u_sub0_bch (.data_in(active_sub[0]), .ecc_out(sub_ecc[0]));
@@ -113,7 +117,8 @@ module hdmi_packet_assembler #(
         if (packet_cancel_link && !packet_active) begin
           packet_loaded <= 1'b0;
           pixel_index <= 5'd0;
-        end else if (packet_cancel && !packet_active && header_q[7:0] != 8'h82) begin
+        end else if (packet_cancel && !packet_active && header_q[7:0] != 8'h82 &&
+                     !(packet_valid && packet_header[7:0] == 8'h82)) begin
           packet_loaded <= 1'b0;
           pixel_index <= 5'd0;
         end else if (packet_valid && packet_ready) begin

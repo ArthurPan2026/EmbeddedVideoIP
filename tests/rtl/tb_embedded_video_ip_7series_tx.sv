@@ -37,7 +37,8 @@ module tb_embedded_video_ip_7series_tx;
   integer vblank_line_prepares=0, vblank_packet_starts=0;
   logic measure_active=0;
   logic [9:0] ref_lane0,ref_lane1,ref_lane2;
-  integer wait_cycles, packet_starts_before_cancel;
+  integer wait_cycles;
+  integer audio_packet_starts_after_cancel=0;
   logic [9:0] expected_samples_word;
   integer video_boundary_state=0; // 0=等待前导，1=前导，2=保护带，3=活动视频
   integer video_preamble_symbols=0, video_guard_symbols=0;
@@ -306,6 +307,8 @@ module tb_embedded_video_ip_7series_tx;
     end
     if (aresetn && dut.packet_start) begin
       packet_start_total=packet_start_total+1;
+      if (hdmi_audio_enable===1'b0 && dut.u_packet_assembler.active_header[7:0] == 8'h02)
+        audio_packet_starts_after_cancel=audio_packet_starts_after_cancel+1;
       if (measure_active && line_index>=V_ACTIVE_SIZE)
         vblank_packet_starts=vblank_packet_starts+1;
     end
@@ -350,14 +353,14 @@ module tb_embedded_video_ip_7series_tx;
     end
     if (wait_cycles>=6000)
       $fatal(1,"未观察到待启动的PCM Audio Sample包");
-    packet_starts_before_cancel=packet_start_total;
+    audio_packet_starts_after_cancel=0;
     @(negedge pixel_clk); hdmi_audio_enable=0;
     repeat(5) @(posedge pixel_clk);
     if (dut.packet_loaded || dut.packet_active || !dut.packet_cancel)
       $fatal(1,"HDMI禁用后未取消未启动的数据包");
     repeat(H_TOTAL*2) @(posedge pixel_clk);
-    if (packet_start_total!=packet_starts_before_cancel)
-      $fatal(1,"已取消的待发包仍启动了数据岛");
+    if (audio_packet_starts_after_cancel != 0)
+      $fatal(1,"Cancelled audio packet started: count=%0d", audio_packet_starts_after_cancel);
     @(negedge pixel_clk); hdmi_audio_enable=1;
 
     // 等待路由重新稳定，再测量完整一帧；帧含48条活动行和5条垂直消隐行。
