@@ -8,12 +8,14 @@ module embedded_video_ip_7series_tx #(
   parameter integer HBLANK_PIXELS = 160,
   parameter integer H_TOTAL = H_ACTIVE_SIZE + HBLANK_PIXELS,
   parameter integer H_SYNC_START = 656,
-  parameter bit HSYNC_ACTIVE_LEVEL = 1'b1
+  parameter bit HSYNC_ACTIVE_LEVEL = 1'b1,
+  parameter integer ACR_N = 6144
 ) (
   input  logic        pixel_clk,
   input  logic        serial_clk,
   input  logic        audio_pcm_clk,
   input  logic        aresetn,
+  input  logic        hdmi_mode_request,
   input  logic [23:0] video_rgb,
   input  logic        video_de,
   input  logic        hsync,
@@ -43,9 +45,11 @@ module embedded_video_ip_7series_tx #(
   logic hsync_pipe [0:VIDEO_LOOKAHEAD_CYCLES];
   logic vsync_pipe [0:VIDEO_LOOKAHEAD_CYCLES];
   logic [2:0] symbol_mode;
+  logic hdmi_mode_active;
   logic packet_start;
   logic line_prepare, packet_cancel;
   logic packet_valid, packet_ready, packet_loaded, packet_active, packet_done;
+  logic packet_cancel_link;
   logic [23:0] packet_header;
   logic [55:0] packet_sub0, packet_sub1, packet_sub2, packet_sub3;
   logic [8:0] packet_data;
@@ -96,24 +100,27 @@ module embedded_video_ip_7series_tx #(
   hdmi_pcm_packet_source #(
     .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO),
     .PIXEL_CLOCK_HZ(PIXEL_CLOCK_HZ),
-    .AUDIO_SAMPLE_RATE_HZ(AUDIO_SAMPLE_RATE_HZ)
+    .AUDIO_SAMPLE_RATE_HZ(AUDIO_SAMPLE_RATE_HZ),
+    .H_TOTAL(H_TOTAL), .ACR_N(ACR_N)
   ) u_audio_packet_source (
     .pixel_clk(pixel_clk), .audio_pcm_clk(audio_pcm_clk),
     .pixel_aresetn(pixel_aresetn), .audio_pcm_aresetn(audio_pcm_aresetn),
+    .hdmi_mode_active(hdmi_mode_active), .vsync(vsync_pipe[VIDEO_LOOKAHEAD_CYCLES]),
     .line_prepare(line_prepare), .packet_active(packet_active),
     .audio_pcm_tdata(audio_pcm_tdata), .audio_pcm_tvalid(audio_pcm_tvalid),
-    .audio_pcm_tready(audio_pcm_tready), .hdmi_audio_enable(hdmi_audio_enable),
+    .audio_pcm_tready(audio_pcm_tready),
+    .hdmi_audio_enable(hdmi_audio_enable && hdmi_mode_active),
     .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
     .packet_ready(packet_ready), .packet_valid(packet_valid), .packet_cancel(packet_cancel),
-    .packet_header(packet_header), .packet_sub0(packet_sub0), .packet_sub1(packet_sub1),
+    .packet_cancel_link(packet_cancel_link), .packet_header(packet_header), .packet_sub0(packet_sub0), .packet_sub1(packet_sub1),
     .packet_sub2(packet_sub2), .packet_sub3(packet_sub3),
     .audio_underflow_event(underflow_pixel), .audio_overflow_event(overflow_audio)
   );
 
-  hdmi_packet_assembler u_packet_assembler (
+  hdmi_packet_assembler #(.STATIC_AVI_ONLY(!ENABLE_HDMI_AUDIO)) u_packet_assembler (
     .pixel_clk(pixel_clk), .resetn(pixel_aresetn),
     .packet_valid(packet_valid), .packet_ready(packet_ready), .packet_cancel(packet_cancel),
-    .packet_start(packet_start), .packet_loaded(packet_loaded),
+    .packet_cancel_link(packet_cancel_link), .packet_start(packet_start), .packet_loaded(packet_loaded),
     .packet_header(packet_header), .packet_sub0(packet_sub0), .packet_sub1(packet_sub1),
     .packet_sub2(packet_sub2), .packet_sub3(packet_sub3),
     .packet_active(packet_active), .packet_data(packet_data), .packet_done(packet_done)
@@ -125,9 +132,11 @@ module embedded_video_ip_7series_tx #(
     .VIDEO_LOOKAHEAD_CYCLES(VIDEO_LOOKAHEAD_CYCLES)
   ) u_line_slot_scheduler (
     .pixel_clk(pixel_clk), .aresetn(pixel_aresetn),
+    .hdmi_mode_request(hdmi_mode_request), .hdmi_mode_active(hdmi_mode_active),
+    .packet_active(packet_active),
     .video_de_lookahead(video_de), .video_de_delayed(de_pipe[VIDEO_LOOKAHEAD_CYCLES]),
     .hsync_delayed(hsync_pipe[VIDEO_LOOKAHEAD_CYCLES]),
-    .packet_loaded(packet_loaded), .packet_offer(packet_valid), .packet_cancel(packet_cancel),
+    .packet_loaded(packet_loaded), .packet_offer(packet_valid), .packet_cancel(packet_cancel_link),
     .line_prepare(line_prepare), .symbol_mode(symbol_mode), .packet_start(packet_start)
   );
 

@@ -18,7 +18,7 @@ module tb_video_pipeline_v1_0;
   wire [23:0] video_data;
   wire video_valid, video_user, video_last;
   logic video_ready=1;
-  wire hdmi_audio_enable, audio_mute;
+  wire hdmi_audio_enable, hdmi_link_mode, audio_mute;
   wire [16:0] audio_gain_q15;
   logic audio_underflow=0, audio_overflow=0;
   logic [5:0] hdmi_diag_status=6'b111111;
@@ -58,7 +58,7 @@ module tb_video_pipeline_v1_0;
     .s_axi_bresp(bresp),.s_axi_bvalid(bvalid),.s_axi_bready(bready),
     .s_axi_araddr(araddr),.s_axi_arvalid(arvalid),.s_axi_arready(arready),
     .s_axi_rdata(rdata),.s_axi_rresp(rresp),.s_axi_rvalid(rvalid),.s_axi_rready(rready),
-    .hdmi_audio_enable(hdmi_audio_enable),.audio_mute(audio_mute),
+    .hdmi_audio_enable(hdmi_audio_enable),.hdmi_link_mode(hdmi_link_mode),.audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15),.audio_underflow(audio_underflow),.audio_overflow(audio_overflow),
     .hdmi_diag_status(hdmi_diag_status)
   );
@@ -250,6 +250,10 @@ module tb_video_pipeline_v1_0;
     axi_read(6'h38, readback);
     if (readback !== 32'd32768 || audio_gain_q15 !== 17'd32768)
       $fatal(1, "TEST_FAIL: HDMI音频增益复位值不匹配");
+    axi_read(6'h00, readback);
+    axi_write(6'h00, readback | 32'h0000_2000, 1); // HDMI link-mode request
+    if (hdmi_link_mode !== 1'b1)
+      $fatal(1, "TEST_FAIL: HDMI link-mode control not stored");
     axi_write(6'h34, 32'd3, 1); // 使能HDMI音频并静音
     if (hdmi_audio_enable !== 1'b1 || audio_mute !== 1'b1)
       $fatal(1, "TEST_FAIL: HDMI音频使能/静音控制不匹配");
@@ -265,7 +269,7 @@ module tb_video_pipeline_v1_0;
     axi_read(6'h3c, readback);
     if (readback[2:0] !== 3'b111)
       $fatal(1, "TEST_FAIL: HDMI音频状态未锁存使能/欠载/溢出");
-    axi_write(6'h00, 32'h0000_0400, 1); // 通过CTRL bit10清除音频sticky状态
+    axi_write(6'h00, 32'h0000_2400, 1); // 保留HDMI link mode并清除音频sticky状态
     axi_read(6'h3c, readback);
     if (readback[2:0] !== 3'b001)
       $fatal(1, "TEST_FAIL: CTRL清错未清除音频FIFO状态");

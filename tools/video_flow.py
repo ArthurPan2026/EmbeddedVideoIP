@@ -56,6 +56,7 @@ SIM_HDL_FILES = (
     "embedded_video_ip_7series_tx.sv",
     "hdmi_acr_packet.sv",
     "hdmi_audio_infoframe.sv",
+    "hdmi_avi_infoframe.sv",
     "hdmi_audio_sample_packet.sv",
     "hdmi_bch_ecc.sv",
     "hdmi_line_slot_scheduler.sv",

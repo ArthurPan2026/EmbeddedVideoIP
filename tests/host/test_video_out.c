@@ -92,12 +92,13 @@ static int configure_vdma(void *context, uint64_t base, uint32_t width,
 
 int main(void)
 {
-    CHECK(strcmp(VIDEO_OUT_VERSION, "0.2.0-dev.2") == 0, "PS库版本不匹配");
+    CHECK(strcmp(VIDEO_OUT_VERSION, "0.3.0-dev.1") == 0, "PS库版本不匹配");
     FakeVideo fake;
     VideoOutIo io;
     VideoOutConfig cfg;
     VideoOutStatus status;
     VideoOutAudioStatus audio_status;
+    VideoOutLinkMode link_mode;
 
     memset(&fake, 0, sizeof(fake));
     memset(&cfg, 0, sizeof(cfg));
@@ -244,6 +245,20 @@ int main(void)
           status.enabled == 1U && status.stream_held == 0U &&
           status.config_pending == 0U,
           "状态未报告数据流已恢复");
+
+    CHECK(VideoOut_SetLinkMode(&io, VIDEO_OUT_LINK_HDMI) == 0 &&
+          VideoOut_GetLinkMode(&io, &link_mode) == 0 &&
+          link_mode == VIDEO_OUT_LINK_HDMI,
+          "HDMI link mode set/get failed");
+    CHECK(VideoOut_Configure(&io, &cfg, 0x18000000ULL, 4U) == 0 &&
+          (fake.regs[0] & (1U << 13)) != 0U,
+          "video configure did not preserve HDMI link mode");
+    CHECK(VideoOut_SetLinkMode(&io, VIDEO_OUT_LINK_DVI) == 0 &&
+          VideoOut_GetLinkMode(&io, &link_mode) == 0 &&
+          link_mode == VIDEO_OUT_LINK_DVI,
+          "DVI-safe link mode set/get failed");
+    CHECK(VideoOut_SetLinkMode(&io, (VideoOutLinkMode)2) != 0,
+          "invalid HDMI link mode was accepted");
 
     puts("TEST_PASS: test_video_out");
     return 0;

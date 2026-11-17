@@ -42,7 +42,7 @@ module tb_video_pipeline_static_profile;
   logic [31:0] bram_dout = '0;
   logic bram_busy;
   logic bram_frame_done;
-  logic hdmi_audio_enable, audio_mute;
+  logic hdmi_audio_enable, hdmi_link_mode, audio_mute;
   logic [16:0] audio_gain_q15;
   logic audio_underflow = 1'b0, audio_overflow = 1'b0;
 
@@ -100,7 +100,7 @@ module tb_video_pipeline_static_profile;
     .s_axi_araddr(s_axi_araddr), .s_axi_arvalid(s_axi_arvalid), .s_axi_arready(s_axi_arready),
     .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
     .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
-    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
+    .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode), .audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
     .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000)
   );

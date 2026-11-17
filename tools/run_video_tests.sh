@@ -78,7 +78,7 @@ run_xsim tb_hdmi_audio_packets \
 run_xsim tb_audio_pcm_async_fifo \
   "$hdl/audio_pcm_async_fifo.sv" "$repo_root/tests/rtl/tb_audio_pcm_async_fifo.sv"
 run_xsim tb_hdmi_packet_assembler \
-  "$hdl/hdmi_packet_assembler.sv" "$hdl/hdmi_bch_ecc.sv" \
+  "$hdl/hdmi_packet_assembler.sv" "$hdl/hdmi_bch_ecc.sv" "$hdl/hdmi_avi_infoframe.sv" \
   "$repo_root/tests/rtl/tb_hdmi_packet_assembler.sv"
 run_xsim tb_hdmi_line_slot_scheduler \
   "$hdl/hdmi_line_slot_scheduler.sv" "$repo_root/tests/rtl/tb_hdmi_line_slot_scheduler.sv"
@@ -93,6 +93,7 @@ run_xsim tb_hdmi_pcm_packet_source \
   "$hdl/hdmi_pcm_packet_source.sv" "$hdl/audio_pcm_async_fifo.sv" \
   "$hdl/audio_gain_q15.sv" "$hdl/hdmi_audio_sample_packet.sv" \
   "$hdl/hdmi_acr_packet.sv" "$hdl/hdmi_audio_infoframe.sv" \
+  "$hdl/hdmi_avi_infoframe.sv" \
   "$repo_root/tests/rtl/tb_hdmi_pcm_packet_source.sv"
 run_xsim tb_embedded_video_ip_7series_tx \
   "$hdl/embedded_video_ip_7series_tx.sv" "$hdl/embedded_video_ip_reset_sync.sv" \
@@ -100,7 +101,7 @@ run_xsim tb_embedded_video_ip_7series_tx \
   "$hdl/hdmi_packet_assembler.sv" "$hdl/hdmi_tmds_video_encoder.sv" \
   "$hdl/hdmi_tmds_mode_mux.sv" "$hdl/hdmi_terc4_encoder.sv" \
   "$hdl/hdmi_bch_ecc.sv" "$hdl/hdmi_audio_sample_packet.sv" \
-  "$hdl/hdmi_audio_infoframe.sv" "$hdl/hdmi_acr_packet.sv" \
+  "$hdl/hdmi_audio_infoframe.sv" "$hdl/hdmi_avi_infoframe.sv" "$hdl/hdmi_acr_packet.sv" \
   "$hdl/audio_pcm_async_fifo.sv" "$hdl/audio_gain_q15.sv" \
   "$third_party/DVI_Constants.vhd" "$third_party/TMDS_Encoder.vhd" \
   "$third_party/OutputSERDES.vhd" --glbl \

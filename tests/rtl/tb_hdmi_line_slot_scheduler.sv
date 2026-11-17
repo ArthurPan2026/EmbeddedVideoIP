@@ -6,14 +6,18 @@ module tb_hdmi_line_slot_scheduler;
                          MODE_VIDEO_GUARD=3'd4, MODE_DATA_GUARD=3'd5,
                          MODE_DATA_PAYLOAD=3'd6;
   logic pixel_clk=0, aresetn=0;
+  logic hdmi_mode_request=0, hdmi_mode_active_high, hdmi_mode_active_low;
+  logic packet_active=0;
   logic [7:0] test_x=0;
   logic [3:0] line_index=0;
   logic hsync_high, hsync_low;
   logic raw_de, delayed_de;
-  logic packet_loaded=1, packet_offer=0, packet_cancel=0;
+  logic packet_loaded=0, packet_offer=0, packet_cancel=0;
   logic prep_high, prep_low, start_high, start_low;
   logic [2:0] mode_high, mode_low;
   integer prepare_events=0, packet_starts=0;
+  integer control_run_length=0;
+  logic extended_control_seen=0;
   integer cycles;
   logic current_line_active, next_line_active;
 
@@ -44,6 +48,8 @@ module tb_hdmi_line_slot_scheduler;
     .HSYNC_ACTIVE_LEVEL(1'b1), .VIDEO_LOOKAHEAD_CYCLES(10)
   ) dut_high (
     .pixel_clk(pixel_clk), .aresetn(aresetn),
+    .hdmi_mode_request(hdmi_mode_request), .hdmi_mode_active(hdmi_mode_active_high),
+    .packet_active(packet_active),
     .video_de_lookahead(raw_de), .video_de_delayed(delayed_de),
     .hsync_delayed(hsync_high), .packet_loaded(packet_loaded),
     .packet_offer(packet_offer), .packet_cancel(packet_cancel),
@@ -55,6 +61,8 @@ module tb_hdmi_line_slot_scheduler;
     .HSYNC_ACTIVE_LEVEL(1'b0), .VIDEO_LOOKAHEAD_CYCLES(10)
   ) dut_low (
     .pixel_clk(pixel_clk), .aresetn(aresetn),
+    .hdmi_mode_request(hdmi_mode_request), .hdmi_mode_active(hdmi_mode_active_low),
+    .packet_active(packet_active),
     .video_de_lookahead(raw_de), .video_de_delayed(delayed_de),
     .hsync_delayed(hsync_low), .packet_loaded(packet_loaded),
     .packet_offer(packet_offer), .packet_cancel(packet_cancel),
@@ -65,19 +73,28 @@ module tb_hdmi_line_slot_scheduler;
     if (aresetn) begin
       #1;
       if (dut_high.x_count !== dut_low.x_count || prep_high !== prep_low ||
-          mode_high !== mode_low || start_high !== start_low)
+          mode_high !== mode_low || start_high !== start_low ||
+          hdmi_mode_active_high !== hdmi_mode_active_low)
         $fatal(1,"HSYNC正/负极性同步结果不一致");
       if (prep_high) begin
         prepare_events=prepare_events+1;
         if (dut_high.x_count!==H_ACTIVE-20)
           $fatal(1,"line_prepare不在每行准备点触发");
       end
+      if (hdmi_mode_active_high && !delayed_de && mode_high===MODE_CONTROL) begin
+        if (control_run_length < 32)
+          control_run_length=control_run_length+1;
+        if (control_run_length >= 32)
+          extended_control_seen=1;
+      end else begin
+        control_run_length=0;
+      end
       if (start_high) begin
         packet_starts=packet_starts+1;
         if (dut_high.x_count!==H_SYNC_START+12+8+2-1)
           $fatal(1,"数据包未在前保护带最后一拍启动");
       end
-      if (dut_high.timing_locked && !delayed_de && !raw_de) begin
+      if (dut_high.timing_locked && hdmi_mode_active_high && (packet_loaded || packet_offer) && !delayed_de && !raw_de) begin
         if (dut_high.x_count>=H_SYNC_START+12 && dut_high.x_count<H_SYNC_START+20 &&
             mode_high!==MODE_DATA_PREAMBLE)
           $fatal(1,"VBlank扫描行缺少数据岛前导");
@@ -96,18 +113,38 @@ module tb_hdmi_line_slot_scheduler;
 
   initial begin
     repeat(3) @(posedge pixel_clk);
-    @(negedge pixel_clk); aresetn=1;
-    // 运行活动行和垂直消隐行：VDE持续为低时，HSYNC仍须逐行启动slot。
+    @(negedge pixel_clk); aresetn=1; hdmi_mode_request=1;
+    wait (hdmi_mode_active_high && hdmi_mode_active_low);
+    @(negedge pixel_clk); packet_loaded=1;
+    // HDMI mode: 运行活动行和垂直消隐行，VDE低时仍应逐行提供 packet slot。
     repeat(H_TOTAL*7+30) @(posedge pixel_clk);
     if (prepare_events<5)
       $fatal(1,"活动区与VBlank行的line_prepare数量不足：%0d",prepare_events);
     if (packet_starts<5)
       $fatal(1,"VBlank期间没有持续插入数据包：%0d",packet_starts);
+    if (!extended_control_seen)
+      $fatal(1,"HDMI blanking did not provide a 32-character extended control period");
+
+    // DVI mode must pass only TMDS video/control and never schedule HDMI guard bands or islands.
+    @(negedge pixel_clk); packet_loaded=0; hdmi_mode_request=0;
+    wait (!hdmi_mode_active_high && !hdmi_mode_active_low);
+    repeat(H_TOTAL*2) begin
+      @(posedge pixel_clk); #1;
+      if (delayed_de && mode_high!==MODE_VIDEO)
+        $fatal(1,"DVI活动区必须只输出TMDS视频编码");
+      if (!delayed_de && mode_high!==MODE_CONTROL)
+        $fatal(1,"DVI消隐区不得插入HDMI前导、保护带或数据岛");
+    end
+    @(negedge pixel_clk); hdmi_mode_request=1; packet_loaded=0;
+    wait (hdmi_mode_active_high && hdmi_mode_active_low);
+    @(negedge pixel_clk); packet_loaded=1;
 
     // 异步复位后应重新等待HSYNC边沿以建立行相位。
-    @(negedge pixel_clk); aresetn=0;
+    @(negedge pixel_clk); packet_loaded=0; aresetn=0;
     repeat(2) @(posedge pixel_clk);
     @(negedge pixel_clk); aresetn=1;
+    wait (hdmi_mode_active_high && hdmi_mode_active_low);
+    @(negedge pixel_clk); packet_loaded=1;
     repeat(H_TOTAL+80) @(posedge pixel_clk);
     if (!dut_high.timing_locked || !dut_low.timing_locked)
       $fatal(1,"复位后未重新锁定HSYNC边沿");

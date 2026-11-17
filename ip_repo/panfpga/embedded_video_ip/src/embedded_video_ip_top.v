@@ -81,6 +81,7 @@ module embedded_video_ip_top #(
   wire m_axis_video_tuser;
   wire m_axis_video_tlast;
   wire hdmi_audio_enable;
+  wire hdmi_link_mode;
   wire audio_mute;
   wire [16:0] audio_gain_q15;
   wire audio_underflow_event_pixel;
@@ -146,8 +147,9 @@ module embedded_video_ip_top #(
     .s_axi_araddr(s_axi_araddr), .s_axi_arvalid(s_axi_arvalid), .s_axi_arready(s_axi_arready),
     .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
     .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
-    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
-    .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow_aclk),
+    .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode),
+    .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
+    .audio_underflow(audio_underflow_aclk),
     .audio_overflow(audio_overflow_aclk), .hdmi_diag_status(hdmi_diag_status)
   );
 
@@ -173,6 +175,7 @@ module embedded_video_ip_top #(
     .HSYNC_ACTIVE_LEVEL(EVIP_HSYNC_ACTIVE_LEVEL)
   ) hdmi_tx (
     .pixel_clk(pixel_clk), .serial_clk(serial_clk), .aresetn(pixel_aresetn),
+    .hdmi_mode_request(hdmi_link_mode),
     .video_rgb(video_rgb), .video_de(video_de), .hsync(video_hsync),
     .vsync(video_vsync),
     .audio_pcm_clk(audio_pcm_clk), .audio_pcm_tdata(s_axis_audio_pcm_tdata),

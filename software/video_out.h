@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define VIDEO_OUT_VERSION "0.2.0-dev.2"
+#define VIDEO_OUT_VERSION "0.3.0-dev.1"
 
 #define VIDEO_OUT_OUTPUT_WIDTH 640U
 #define VIDEO_OUT_OUTPUT_HEIGHT 480U
@@ -24,6 +24,7 @@ typedef enum {
 } VideoOutPixelFormat;
 typedef enum { VIDEO_OUT_SCALE_BYPASS=0, VIDEO_OUT_SCALE_NEAREST=1 } VideoOutScaleMode;
 typedef enum { VIDEO_OUT_ASPECT_FIT=0, VIDEO_OUT_ASPECT_STRETCH=1 } VideoOutAspectMode;
+typedef enum { VIDEO_OUT_LINK_DVI=0, VIDEO_OUT_LINK_HDMI=1 } VideoOutLinkMode;
 
 typedef struct {
     VideoOutSource source;
@@ -73,6 +74,8 @@ typedef struct {
 
 int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
                        uint64_t frame0, uint32_t vdma_bytes_per_pixel);
+int VideoOut_SetLinkMode(const VideoOutIo *io, VideoOutLinkMode mode);
+int VideoOut_GetLinkMode(const VideoOutIo *io, VideoOutLinkMode *mode);
 int VideoOut_Start(const VideoOutIo *io);
 int VideoOut_BramSubmit(const VideoOutIo *io, uint32_t frame_base_word);
 int VideoOut_Stop(const VideoOutIo *io);

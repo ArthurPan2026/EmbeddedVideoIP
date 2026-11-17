@@ -2,11 +2,11 @@
 
 所有寄存器为 32-bit、按字节寻址、小端。AXI-Lite AW 与 W 通道独立握手，寄存器接口支持 byte strobe。唯一外部 `S_AXI` 控制口的地址窗口至少为 `0x40` 字节。
 
-`CTRL` bit 8 是视频配置提交脉冲，bit 9 请求读取一帧 BRAM，bit 10 清除视频/音频 sticky 错误，bit 11 暂停输入并中止当前部分帧，bit 12 在异常恢复路径中释放输入。
+`CTRL` bit 8 是视频配置提交脉冲，bit 9 请求读取一帧 BRAM，bit 10 清除视频/音频 sticky 错误，bit 11 暂停输入并中止当前部分帧，bit 12 在异常恢复路径中释放输入，bit 13 请求 HDMI packet framing（复位默认 0 为 DVI-safe）。
 
 | 偏移 | 名称 | 访问 | 字段 |
 |---|---|---|---|
-| `0x00` | `CTRL` | RW/W1P | bit 0 视频使能；bits `[2:1]` 视频源（0=BRAM、1=HLS、2=VDMA）；bit 3 最近邻 scaler 使能；bit 4 stretch；bits `[6:5]` 像素格式；bit 8 commit；bit 9 BRAM frame start；bit 10 clear errors；bit 11 abort/hold stream；bit 12 resume stream |
+| `0x00` | `CTRL` | RW/W1P | bit 0 视频使能；bits `[2:1]` 视频源（0=BRAM、1=HLS、2=VDMA）；bit 3 最近邻 scaler 使能；bit 4 stretch；bits `[6:5]` 像素格式；bit 8 commit；bit 9 BRAM frame start；bit 10 clear errors；bit 11 abort/hold stream；bit 12 resume stream；bit 13 link mode（0=DVI，1=HDMI；由消费端 HPD/EDID 管理器在确认 HDMI VSDB 后设置） |
 | `0x04` | `INPUT_SIZE` | RW | bits `[15:0]` width，`[31:16]` height |
 | `0x08` | `STRIDE_BYTES` | RW | 源图像相邻行首地址的字节间距 |
 | `0x0C` | `BRAM_BASE_WORD` | RW | BRAM reader 起始地址，单位为 32-bit word |

@@ -4,12 +4,16 @@ module hdmi_pcm_packet_source #(
   parameter bit ENABLE_HDMI_AUDIO = 1'b1,
   parameter integer PIXEL_CLOCK_HZ = 25_178_571,
   parameter integer AUDIO_SAMPLE_RATE_HZ = 48_000,
-  parameter integer FIFO_ADDR_WIDTH = 4
+  parameter integer FIFO_ADDR_WIDTH = 4,
+  parameter integer ACR_N = 6144,
+  parameter integer H_TOTAL = 800
 ) (
   input  logic        pixel_clk,
   input  logic        audio_pcm_clk,
   input  logic        pixel_aresetn,
   input  logic        audio_pcm_aresetn,
+  input  logic        hdmi_mode_active,
+  input  logic        vsync,
   input  logic        line_prepare,
   input  logic        packet_active,
   input  logic [31:0] audio_pcm_tdata,
@@ -21,6 +25,7 @@ module hdmi_pcm_packet_source #(
   input  logic        packet_ready,
   output logic        packet_valid,
   output logic        packet_cancel,
+  output logic        packet_cancel_link,
   output logic [23:0] packet_header,
   output logic [55:0] packet_sub0,
   output logic [55:0] packet_sub1,
@@ -30,11 +35,17 @@ module hdmi_pcm_packet_source #(
   output logic        audio_overflow_event
 );
   generate if (ENABLE_HDMI_AUDIO) begin : g_hdmi_audio_enabled
-    localparam logic [1:0] PACKET_NONE = 2'd0;
-    localparam logic [1:0] PACKET_SAMPLE = 2'd1;
-    localparam logic [1:0] PACKET_ACR = 2'd2;
-    localparam logic [1:0] PACKET_INFOFRAME = 2'd3;
-    localparam integer SAMPLE_PHASE_WIDTH = 32;
+    localparam logic [2:0] PACKET_NONE = 3'd0;
+    localparam logic [2:0] PACKET_SAMPLE = 3'd1;
+    localparam logic [2:0] PACKET_ACR = 3'd2;
+    localparam logic [2:0] PACKET_INFOFRAME = 3'd3;
+    localparam logic [2:0] PACKET_AVI = 3'd5;
+    localparam integer SAMPLE_PHASE_WIDTH = (PIXEL_CLOCK_HZ > 1) ? $clog2(PIXEL_CLOCK_HZ) : 1;
+    localparam integer SAMPLE_PHASE_SUM_WIDTH = SAMPLE_PHASE_WIDTH + 1;
+    localparam integer ACR_PHASE_WIDTH = (PIXEL_CLOCK_HZ > 1) ? $clog2(PIXEL_CLOCK_HZ) : 1;
+    localparam integer ACR_PHASE_SUM_WIDTH = ACR_PHASE_WIDTH + 1;
+    localparam integer ACR_PACKET_RATE_HZ = (128 * AUDIO_SAMPLE_RATE_HZ) / ACR_N;
+    localparam integer ACR_LINE_PHASE_INCREMENT = ACR_PACKET_RATE_HZ * H_TOTAL;
 
     logic audio_enable_meta, audio_enable_sync, audio_enable_prev;
     logic pixel_enable_meta, pixel_enable_sync, pixel_enable_prev;
@@ -46,9 +57,12 @@ module hdmi_pcm_packet_source #(
     logic fifo_wr_ready, fifo_rd_valid, fifo_rd_ready;
     logic fifo_wr_full, fifo_rd_empty;
     logic [FIFO_ADDR_WIDTH:0] fifo_wr_level, fifo_rd_level;
-    logic [31:0] sample_phase;
-    logic [32:0] sample_phase_sum;
+    logic [SAMPLE_PHASE_WIDTH-1:0] sample_phase;
+    logic [SAMPLE_PHASE_SUM_WIDTH-1:0] sample_phase_sum;
     logic sample_due;
+    logic [ACR_PHASE_WIDTH-1:0] acr_line_phase;
+    logic [ACR_PHASE_SUM_WIDTH-1:0] acr_line_phase_sum;
+    logic acr_line_tick;
     logic rd_fire;
     logic audio_started;
     logic [2:0] startup_sample_count;
@@ -58,16 +72,18 @@ module hdmi_pcm_packet_source #(
     logic [7:0] next_frame_index;
     logic [7:0] first_buffer_frame_index;
     logic signed [15:0] gained_left, gained_right;
-    logic [1:0] selected_packet;
+    logic [2:0] selected_packet;
     logic packet_sample_fire;
     logic acr_due;
-    logic [5:0] acr_line_counter;
     logic infoframe_due;
-    logic [9:0] frame_line_counter;
-    logic [23:0] sample_header, acr_header, info_header;
+    logic avi_due;
+    logic vsync_q;
+    logic vsync_rise;
+    logic [23:0] sample_header, acr_header, info_header, avi_header;
     logic [55:0] sample_sub [0:3];
     logic [55:0] acr_sub [0:3];
     logic [55:0] info_sub [0:3];
+    logic [55:0] avi_sub [0:3];
     integer sample_index;
 
     // 使能、静音和增益通过两级触发器同步；音频数据使用异步FIFO跨域。
@@ -113,7 +129,10 @@ module hdmi_pcm_packet_source #(
     assign rd_clear = rd_flush_pending && !packet_active;
     assign audio_pcm_tready = !audio_enable_sync || (fifo_wr_ready && !wr_clear);
     assign audio_overflow_event = 1'b0;
+    // A pending packet may be discarded only after the link has safely selected DVI.
+    // Audio disable stops future audio packets; a loaded packet completes at its boundary.
     assign packet_cancel = !pixel_enable_sync && !packet_active;
+    assign packet_cancel_link = !hdmi_mode_active && !packet_active;
 
     audio_pcm_async_fifo #(
       .DATA_WIDTH(32), .ADDR_WIDTH(FIFO_ADDR_WIDTH)
@@ -128,13 +147,16 @@ module hdmi_pcm_packet_source #(
 
     // 固定点节拍器按实际像素时钟平均产生48 kHz取样使能。
     always_comb begin
-      sample_phase_sum = {1'b0, sample_phase} + 33'(AUDIO_SAMPLE_RATE_HZ);
-      sample_due = sample_phase_sum >= 33'(PIXEL_CLOCK_HZ);
+      sample_phase_sum = {1'b0, sample_phase} + SAMPLE_PHASE_SUM_WIDTH'(AUDIO_SAMPLE_RATE_HZ);
+      sample_due = sample_phase_sum >= SAMPLE_PHASE_SUM_WIDTH'(PIXEL_CLOCK_HZ);
+      acr_line_phase_sum = {1'b0, acr_line_phase} + ACR_PHASE_SUM_WIDTH'(ACR_LINE_PHASE_INCREMENT);
+      acr_line_tick = acr_line_phase_sum >= ACR_PHASE_SUM_WIDTH'(PIXEL_CLOCK_HZ);
     end
 
     assign fifo_rd_ready = pixel_enable_sync && !rd_flush_pending &&
                            (buffered_sample_count < 3'd4);
     assign rd_fire = fifo_rd_valid && fifo_rd_ready;
+    assign vsync_rise = vsync && !vsync_q;
     audio_gain_q15 u_gain_left (
       .sample_in($signed(fifo_rd_data[15:0])), .gain_q15(gain_sync),
       .mute(mute_sync), .sample_out(gained_left)
@@ -160,7 +182,7 @@ module hdmi_pcm_packet_source #(
           sample_debt <= 5'd0;
         end else begin
           if (sample_due)
-            sample_phase <= sample_phase_sum - 33'(PIXEL_CLOCK_HZ);
+            sample_phase <= sample_phase_sum - SAMPLE_PHASE_SUM_WIDTH'(PIXEL_CLOCK_HZ);
           else
             sample_phase <= sample_phase_sum[SAMPLE_PHASE_WIDTH-1:0];
 
@@ -233,18 +255,23 @@ module hdmi_pcm_packet_source #(
       .AUDIO_SAMPLE_RATE_HZ(AUDIO_SAMPLE_RATE_HZ)
     ) u_acr_packet (.header(acr_header), .subpacket(acr_sub));
     hdmi_audio_infoframe u_audio_infoframe (.header(info_header), .subpacket(info_sub));
+    hdmi_avi_infoframe u_avi_infoframe (.header(avi_header), .subpacket(avi_sub));
 
     always_comb begin
       selected_packet = PACKET_NONE;
-      if (acr_due)
+      if (hdmi_mode_active && pixel_enable_sync && !rd_flush_pending &&
+          (acr_due || acr_line_tick)) begin
         selected_packet = PACKET_ACR;
-      else if (infoframe_due)
-        selected_packet = PACKET_INFOFRAME;
-      else if (buffered_sample_count != 3'd0)
-        selected_packet = PACKET_SAMPLE;
-
-      packet_valid = line_prepare && pixel_enable_sync && !rd_flush_pending &&
-                     packet_ready && (selected_packet != PACKET_NONE);
+      end else if (hdmi_mode_active && avi_due) begin
+        selected_packet = PACKET_AVI;
+      end else if (hdmi_mode_active && pixel_enable_sync && !rd_flush_pending) begin
+        if (infoframe_due)
+          selected_packet = PACKET_INFOFRAME;
+        else if (buffered_sample_count != 3'd0)
+          selected_packet = PACKET_SAMPLE;
+      end
+      packet_valid = line_prepare && hdmi_mode_active && packet_ready &&
+                     (selected_packet != PACKET_NONE);
       packet_header = 24'd0;
       packet_sub0 = 56'd0;
       packet_sub1 = 56'd0;
@@ -272,55 +299,128 @@ module hdmi_pcm_packet_source #(
           packet_sub2 = info_sub[2];
           packet_sub3 = info_sub[3];
         end
+        PACKET_AVI: begin
+          packet_header = avi_header;
+          packet_sub0 = avi_sub[0];
+          packet_sub1 = avi_sub[1];
+          packet_sub2 = avi_sub[2];
+          packet_sub3 = avi_sub[3];
+        end
         default: begin end
       endcase
     end
 
     assign packet_sample_fire = packet_valid && (selected_packet == PACKET_SAMPLE);
 
-    // ACR约每31条扫描行发送一次；Audio InfoFrame每525条扫描行至少发送一次。
+    // CTS 7-29 checks the long-term ACR update interval. Use a fractional
+    // line accumulator rather than a fixed 31-line interval.
     always_ff @(posedge pixel_clk or negedge pixel_aresetn) begin
       if (!pixel_aresetn) begin
         acr_due <= 1'b1;
-        acr_line_counter <= 6'd0;
+        acr_line_phase <= '0;
         infoframe_due <= 1'b1;
-        frame_line_counter <= 10'd0;
+        avi_due <= 1'b1;
+        vsync_q <= 1'b0;
       end else if (rd_clear) begin
         acr_due <= 1'b1;
-        acr_line_counter <= 6'd0;
+        acr_line_phase <= '0;
         infoframe_due <= 1'b1;
-        frame_line_counter <= 10'd0;
-      end else if (line_prepare) begin
-        if (acr_line_counter == 6'd30) begin
-          acr_line_counter <= 6'd0;
-          acr_due <= 1'b1;
-        end else begin
-          acr_line_counter <= acr_line_counter + 1'b1;
-        end
+        avi_due <= 1'b1;
+        vsync_q <= vsync;
+      end else begin
+        vsync_q <= vsync;
 
-        if (frame_line_counter == 10'd524) begin
-          frame_line_counter <= 10'd0;
+        if (!hdmi_mode_active) begin
           infoframe_due <= 1'b1;
-        end else begin
-          frame_line_counter <= frame_line_counter + 1'b1;
+          avi_due <= 1'b1;
         end
 
-        if (packet_valid && selected_packet == PACKET_ACR)
-          acr_due <= 1'b0;
-        if (packet_valid && selected_packet == PACKET_INFOFRAME)
-          infoframe_due <= 1'b0;
+        if (!hdmi_mode_active || !pixel_enable_sync || rd_flush_pending) begin
+          acr_due <= 1'b1;
+          acr_line_phase <= '0;
+          if (!pixel_enable_sync || rd_flush_pending)
+            infoframe_due <= 1'b1;
+        end else if (line_prepare) begin
+          if (packet_valid && packet_ready && selected_packet == PACKET_ACR) begin
+            // Start the next interval at the actual ACR packet line. Preserve
+            // fractional overshoot only when this packet lands on the phase tick.
+            acr_due <= 1'b0;
+            if (acr_line_tick)
+              acr_line_phase <= acr_line_phase_sum - ACR_PHASE_SUM_WIDTH'(PIXEL_CLOCK_HZ);
+            else
+              acr_line_phase <= '0;
+          end else if (acr_due) begin
+            // A due packet is waiting for a free island slot; hold its phase.
+          end else if (acr_line_tick) begin
+            acr_line_phase <= acr_line_phase_sum - ACR_PHASE_SUM_WIDTH'(PIXEL_CLOCK_HZ);
+            acr_due <= 1'b1;
+          end else begin
+            acr_line_phase <= acr_line_phase_sum[ACR_PHASE_WIDTH-1:0];
+          end
+        end
+
+        if (line_prepare) begin
+          if (packet_valid && packet_ready && selected_packet == PACKET_INFOFRAME)
+            infoframe_due <= 1'b0;
+          if (packet_valid && packet_ready && selected_packet == PACKET_AVI)
+            avi_due <= 1'b0;
+        end
+
+        // Use the actual frame marker instead of a duplicate line counter.
+        if (vsync_rise) begin
+          infoframe_due <= 1'b1;
+          avi_due <= 1'b1;
+        end
       end
     end
+
+    initial begin
+      if (ACR_N <= 0 || ACR_PACKET_RATE_HZ <= 0)
+        $error("ACR_N must produce a positive HDMI 1.4b CTS update rate");
+      if (ACR_LINE_PHASE_INCREMENT >= PIXEL_CLOCK_HZ)
+        $error("ACR update rate must be below the pixel-line rate");
+      if (H_TOTAL <= 0)
+        $error("HDMI timing profile totals must be positive");
+    end
   end else begin : g_hdmi_audio_disabled
+    logic vsync_q;
+    logic vsync_rise;
+    logic avi_due;
+    logic [23:0] avi_header;
+    logic [55:0] avi_sub [0:3];
+    hdmi_avi_infoframe u_avi_infoframe (.header(avi_header), .subpacket(avi_sub));
+    assign vsync_rise = vsync && !vsync_q;
     assign audio_pcm_tready = 1'b1;
-    assign packet_valid = 1'b0;
+    assign packet_valid = hdmi_mode_active && line_prepare && packet_ready && avi_due;
     assign packet_cancel = 1'b0;
-    assign packet_header = 24'd0;
-    assign packet_sub0 = 56'd0;
-    assign packet_sub1 = 56'd0;
-    assign packet_sub2 = 56'd0;
-    assign packet_sub3 = 56'd0;
+    assign packet_cancel_link = !hdmi_mode_active && !packet_active;
+    always_comb begin
+      // The STATIC_AVI_ONLY assembler consumes this constant payload directly.
+      packet_header = avi_header;
+      packet_sub0 = avi_sub[0];
+      packet_sub1 = avi_sub[1];
+      packet_sub2 = avi_sub[2];
+      packet_sub3 = avi_sub[3];
+    end
     assign audio_underflow_event = 1'b0;
     assign audio_overflow_event = 1'b0;
+
+    always_ff @(posedge pixel_clk or negedge pixel_aresetn) begin
+      if (!pixel_aresetn) begin
+        vsync_q <= 1'b0;
+        avi_due <= 1'b1;
+      end else begin
+        vsync_q <= vsync;
+        if (!hdmi_mode_active) begin
+          avi_due <= 1'b1;
+        end else if (line_prepare) begin
+          if (packet_valid && packet_ready && avi_due)
+            avi_due <= 1'b0;
+        end
+        if (vsync_rise) begin
+          avi_due <= 1'b1;
+        end
+      end
+    end
   end endgenerate
 endmodule

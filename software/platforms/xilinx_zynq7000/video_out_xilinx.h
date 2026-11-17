@@ -29,6 +29,7 @@ VideoOutIo VideoOutXilinx_GetIo(VideoOutXilinx *adapter);
 int VideoOutXilinx_Configure(VideoOutXilinx *adapter,
                              const VideoOutConfig *config,
                              uint32_t vdma_bytes_per_pixel);
+int VideoOutXilinx_SetLinkMode(VideoOutXilinx *adapter, VideoOutLinkMode mode);
 int VideoOutXilinx_SetHdmiAudioEnabled(VideoOutXilinx *adapter, uint8_t enabled);
 int VideoOutXilinx_SetAudioMute(VideoOutXilinx *adapter, uint8_t muted);
 int VideoOutXilinx_SetAudioGainQ15(VideoOutXilinx *adapter, uint32_t gain_q15);

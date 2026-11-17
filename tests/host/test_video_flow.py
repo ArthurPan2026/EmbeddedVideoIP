@@ -281,6 +281,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv",
@@ -365,6 +366,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertNotIn("docs/architecture.md", package)
             self.assertNotIn("software/video_out.c", package)
             self.assertIn("tests/rtl/tb_video_pipeline_v1_0.sv", sim)
+            self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", sim)
             self.assertIn("software/video_out.c", sim)
             self.assertIn("software/platforms/xilinx_zynq7000/video_out_xilinx.c", sim)
             self.assertIn("VERSION", sim)

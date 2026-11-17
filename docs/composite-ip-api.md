@@ -2,7 +2,7 @@
 
 ## 产品边界
 
-当前开发版本为 0.2.0-dev.4，PS C 库和发布包共用该版本。Vivado 外部 VLNV 固定为 panfpga.org:video:embedded_video_ip:1.0，作为 IP-XACT 兼容标识独立维护。消费者在 Vivado IP Integrator 中只实例化一个顶层组件：`panfpga.org:video:embedded_video_ip:1.0`。该组件内部组合现有视频处理核、视频输出桥、VTC、Zybo Z7-20 时钟 profile 和 7-series HDMI 发送适配器；消费者不在自己的 BD 中逐块连接 scaler、VTC、`v_axi4s_vid_out` 或 TMDS 发送逻辑。
+当前开发版本为 0.3.0-dev.1，PS C 库和发布包共用该版本。Vivado 外部 VLNV 固定为 panfpga.org:video:embedded_video_ip:1.0，作为 IP-XACT 兼容标识独立维护。消费者在 Vivado IP Integrator 中只实例化一个顶层组件：`panfpga.org:video:embedded_video_ip:1.0`。该组件内部组合现有视频处理核、视频输出桥、VTC、Zybo Z7-20 时钟 profile 和 7-series HDMI 发送适配器；消费者不在自己的 BD 中逐块连接 scaler、VTC、`v_axi4s_vid_out` 或 TMDS 发送逻辑。
 
 EmbeddedVideoIP 是配套的 PL+PS 产品：PL 侧提供一个 Vivado IP Catalog 顶层组件，PS 侧提供匹配的通用 C API 与 Zynq-7000 adapter。PS/DDR 控制器、源数据生产器、系统时钟/复位及板级引脚仍由消费工程提供。
 
@@ -39,7 +39,7 @@ Zybo Z7-20 时钟 profile 使用 50 MHz `hdmi_ref_clk`，输出像素时钟约 2
 | `s_axis_audio_pcm_tvalid` | 输入 | 当前立体声样本对有效 |
 | `s_axis_audio_pcm_tready` | 输出 | HDMI 音频通路可接受样本对时拉高 |
 
-PCM 按 AXI4-Stream 规则握手：生产者只在 `TVALID && TREADY` 时推进样本，并在被背压期间保持 `TVALID/TDATA` 稳定。V1 的音频范围固定为 2 声道 16-bit/48 kHz LPCM，并匹配 25.178571 MHz 像素时钟。消费者不分别配置采样率和像素时钟；音源适配器负责按 48 kHz 提供样本有效节拍。实现覆盖 ACR、Audio InfoFrame 和 HDMI 数据岛子集，参考公开 HDMI 1.3 资料、AMD PG235 与 XAPP460。2026-11-16 在 GBA 消费工程中完成信号路径预验证，C1-1 捕获到音频 PCM；尚未确认扬声器听感，也未完成正式板级验收或 HDMI 认证，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。接口不包含应用或游戏专属语义。ACR 由静态 profile 的实际像素时钟计算。
+PCM 按 AXI4-Stream 规则握手：生产者只在 `TVALID && TREADY` 时推进样本，并在被背压期间保持 `TVALID/TDATA` 稳定。V1 的音频范围固定为 2 声道 16-bit/48 kHz LPCM，并匹配 25.178571 MHz 像素时钟。消费者不分别配置采样率和像素时钟；音源适配器负责按 48 kHz 提供样本有效节拍。协议字段按 HDMI 1.4b 和 CEA-861-D 核对；音频数据路径参考 AMD PG235 与 XAPP460。2026-11-16 在 GBA 消费工程中完成信号路径预验证，C1-1 捕获到音频 PCM；尚未确认扬声器听感，也未完成正式板级验收或 HDMI 认证，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。接口不包含应用或游戏专属语义。ACR 由静态 profile 的实际像素时钟计算。
 
 ### 控制与音频状态
 
@@ -51,6 +51,7 @@ PCM 按 AXI4-Stream 规则握手：生产者只在 `TVALID && TREADY` 时推进�
 
 | 偏移 | 名称 | 访问 | 定义 |
 |---|---|---|---|
+| `0x00` | `CTRL` | RW/W1P | bit 13：DVI-safe/HDMI link-mode request；默认 DVI-safe，只有 EDID 确认 HDMI VSDB 后才请求 HDMI framing |
 | `0x34` | `AUDIO_CTRL` | RW | bit 0：HDMI 音频使能；bit 1：静音；其他位保留 |
 | `0x38` | `AUDIO_GAIN_Q15` | RW | bits `[16:0]`：增益 `0..32768`，`32768` 为 unity gain；其他位保留 |
 | `0x3C` | `AUDIO_STATUS` | RO | bit 0：`HDMI_AUDIO_ENABLED` 配置状态；bit 1：音频欠载 sticky 状态；bit 2：保留，V1 恒为 0；其他位保留 |
@@ -77,13 +78,15 @@ Zybo Z7-20 使用 7-series HDMI 发送适配器。其他器件系列只能在提
 
 同一 IP 版本用 Vivado 参数裁剪 HDMI 音频逻辑：
 
-- `ENABLE_HDMI_AUDIO=0` 时不综合 PCM FIFO、音频格式化和 HDMI 音频 packetizer，但视频 TMDS 输出仍可用。
+- `ENABLE_HDMI_AUDIO=0` 时不综合 PCM FIFO、LPCM/ACR/Audio InfoFrame 逻辑和动态包存储；保留固定 AVI InfoFrame 和静态 AVI-only serializer，保证 HDMI 1.4b Data Island。
 - `ENABLE_HDMI_AUDIO=1` 时综合完整的 HDMI 音频路径，可由 `AUDIO_CTRL` 在运行时使能/静音。
 - V1 固定双声道 48 kHz PCM 和 Zybo HDMI 时钟 profile；采样率/像素时钟作为匹配配置一起生成。
 
 这些是同一 EmbeddedVideoIP 版本的静态 profile，不发布相互分叉的核心版本。需要 HDMI 音频与不需要音频的消费项目通过配置选择所需逻辑。
 
 ## 配套 PS C API
+
+通用 API 提供 `VideoOut_SetLinkMode` / `VideoOut_GetLinkMode`，Zynq adapter 提供 `VideoOutXilinx_SetLinkMode`。该字段是协议模式请求；TX 在像素时钟域双触发同步，并在包完成和水平同步进入水平消隐期安全切换。消费者应在 EDID 通过校验且发现 HDMI VSDB 后请求 HDMI；HPD 下降、EDID 无效或无 VSDB 时请求 DVI-safe。`VideoOut_GetLinkMode` 返回寄存器中的请求值，不代表对端物理链路或 CTS 已验证。
 
 通用接口提供 `VideoOut_SetHdmiAudioEnabled`、`VideoOut_SetAudioMute`、`VideoOut_SetAudioGainQ15` 和 `VideoOut_GetAudioStatus`；Zynq-7000 adapter 提供对应的 `VideoOutXilinx_` 封装。视频和音频共用同一个 `VideoOutIo` AXI-Lite 访问对象。
 

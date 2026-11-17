@@ -74,6 +74,7 @@ module video_pipeline_v1_0 #(
 
   // HDMI audio control/status is routed to the composite transmitter.
   output logic hdmi_audio_enable,
+  output logic hdmi_link_mode,
   output logic audio_mute,
   output logic [16:0] audio_gain_q15,
   input logic audio_underflow,
@@ -144,8 +145,9 @@ module video_pipeline_v1_0 #(
     .busy(cfg_busy), .bram_busy(bram_busy), .active_source(active_source),
     .active_width(measured_active_width), .active_height(measured_active_height),
     .frame_count(cfg_frame_count), .error_flags(cfg_error_flags),
-    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
-    .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
+    .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode),
+    .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
+    .audio_underflow(audio_underflow),
     .audio_overflow(audio_overflow), .hdmi_diag_status(hdmi_diag_status)
   );
 

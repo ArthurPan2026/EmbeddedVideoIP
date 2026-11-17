@@ -51,7 +51,8 @@ module axi_lite_video_regs #(
   output logic [16:0] audio_gain_q15,
   input logic audio_underflow,
   input logic audio_overflow,
-  input logic [5:0] hdmi_diag_status
+  input logic [5:0] hdmi_diag_status,
+  output logic hdmi_link_mode
 );
   localparam logic [ADDR_WIDTH-1:0] REG_CTRL = 'h00;
   localparam logic [ADDR_WIDTH-1:0] REG_SIZE = 'h04;
@@ -133,7 +134,9 @@ module axi_lite_video_regs #(
     cfg_x_rem = x_ratio_reg[25:16];
     cfg_y_step = y_ratio_reg[9:0];
     cfg_y_rem = y_ratio_reg[25:16];
-    hdmi_audio_enable = (ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0];
+    // CTRL[13] selects HDMI packet framing; reset/default 0 is DVI-safe.
+    hdmi_link_mode = ctrl_reg[13];
+    hdmi_audio_enable = (ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0] && hdmi_link_mode;
     audio_mute = audio_ctrl_reg[1];
     audio_gain_q15 = audio_gain_reg;
 

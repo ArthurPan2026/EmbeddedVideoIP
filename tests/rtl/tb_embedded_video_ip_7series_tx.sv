@@ -19,7 +19,7 @@ module tb_embedded_video_ip_7series_tx;
   logic video_de, hsync, vsync;
   logic [31:0] audio_pcm_tdata=0;
   logic audio_pcm_tvalid=0, audio_pcm_tready;
-  logic hdmi_audio_enable=0, audio_mute=0;
+  logic hdmi_mode_request=1, hdmi_audio_enable=0, audio_mute=0;
   logic [16:0] audio_gain_q15=17'd32768;
   logic tmds_tx_clk_p,tmds_tx_clk_n;
   logic [2:0] tmds_tx_data_p,tmds_tx_data_n;
@@ -105,10 +105,12 @@ module tb_embedded_video_ip_7series_tx;
     .ENABLE_HDMI_AUDIO(1'b1), .PIXEL_CLOCK_HZ(PIXEL_CLOCK_HZ),
     .AUDIO_SAMPLE_RATE_HZ(AUDIO_SAMPLE_RATE_HZ),
     .H_ACTIVE_SIZE(H_ACTIVE_SIZE), .HBLANK_PIXELS(HBLANK_PIXELS),
-    .H_TOTAL(H_TOTAL), .H_SYNC_START(H_SYNC_START), .HSYNC_ACTIVE_LEVEL(1'b1)
+    .H_TOTAL(H_TOTAL), .H_SYNC_START(H_SYNC_START), .HSYNC_ACTIVE_LEVEL(1'b1),
+    .ACR_N(512)
   ) dut (
     .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
-    .aresetn(aresetn), .video_rgb(video_rgb), .video_de(video_de),
+    .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
+    .video_rgb(video_rgb), .video_de(video_de),
     .hsync(hsync), .vsync(vsync), .audio_pcm_tdata(audio_pcm_tdata),
     .audio_pcm_tvalid(audio_pcm_tvalid), .audio_pcm_tready(audio_pcm_tready),
     .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
@@ -144,7 +146,10 @@ module tb_embedded_video_ip_7series_tx;
 
   always @(posedge pixel_clk) begin
     #1;
-    if (aresetn) begin
+    if (aresetn && !dut.hdmi_mode_active) begin
+      // DVI-safe startup is legal until the synchronized HDMI request takes effect.
+      video_boundary_state=0;
+    end else if (aresetn) begin
       case (dut.u_hdmi_mode_mux.mode_pipe[2])
         MODE_VIDEO_PREAMBLE: begin
           if ((video_boundary_state == 0) || (video_boundary_state == 3)) begin
@@ -227,7 +232,7 @@ module tb_embedded_video_ip_7series_tx;
 
     // 等待一个尚未启动的数据包，切路由前验证它会被安全取消。
     wait_cycles=0;
-    while (!(dut.packet_loaded && dut.u_packet_assembler.header_q[7:0]==8'h02 &&
+    while (!(dut.packet_loaded && dut.u_packet_assembler.active_header[7:0]==8'h02 &&
              !dut.packet_active) && wait_cycles<6000) begin
       @(posedge pixel_clk); wait_cycles=wait_cycles+1;
     end

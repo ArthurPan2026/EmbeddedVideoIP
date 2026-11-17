@@ -26,6 +26,7 @@
 #define CTRL_CLEAR_ERRORS (1U << 10)
 #define CTRL_ABORT_STREAM (1U << 11)
 #define CTRL_RESUME_STREAM (1U << 12)
+#define CTRL_HDMI_LINK_MODE (1U << 13)
 #define VIDEO_OUT_STATUS_ENABLED       (1U << 0)
 #define VIDEO_OUT_STATUS_STREAM_HELD   (1U << 1)
 #define VIDEO_OUT_STATUS_CONFIG_PENDING (1U << 2)
@@ -190,8 +191,10 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
     io->write_reg(io->context, REG_Y_RATIO,
                   ((uint32_t)geometry.y_rem << 16) | geometry.y_step);
 
-    control = ((uint32_t)config->source << CTRL_SOURCE_SHIFT) |
-              ((uint32_t)config->format << CTRL_FORMAT_SHIFT);
+    // Keep the link protocol selected by the consumer's HPD/EDID service.
+    control = io->read_reg(io->context, REG_CTRL) & CTRL_HDMI_LINK_MODE;
+    control |= ((uint32_t)config->source << CTRL_SOURCE_SHIFT) |
+               ((uint32_t)config->format << CTRL_FORMAT_SHIFT);
     if (config->scale == VIDEO_OUT_SCALE_NEAREST) control |= CTRL_SCALE;
     if (config->aspect == VIDEO_OUT_ASPECT_STRETCH) control |= CTRL_STRETCH;
 
@@ -219,6 +222,31 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
         VideoOut_WriteControlPulse(io, CTRL_RESUME_STREAM);
         return -1;
     }
+    return 0;
+}
+
+int VideoOut_SetLinkMode(const VideoOutIo *io, VideoOutLinkMode mode)
+{
+    uint32_t control;
+    if (!VideoOut_ValidIo(io) ||
+        (mode != VIDEO_OUT_LINK_DVI && mode != VIDEO_OUT_LINK_HDMI))
+        return -1;
+    control = io->read_reg(io->context, REG_CTRL);
+    control &= ~(CTRL_COMMIT | CTRL_CLEAR_ERRORS | CTRL_ABORT_STREAM |
+                 CTRL_RESUME_STREAM | CTRL_HDMI_LINK_MODE);
+    if (mode == VIDEO_OUT_LINK_HDMI)
+        control |= CTRL_HDMI_LINK_MODE;
+    io->write_reg(io->context, REG_CTRL, control);
+    return 0;
+}
+
+int VideoOut_GetLinkMode(const VideoOutIo *io, VideoOutLinkMode *mode)
+{
+    uint32_t control;
+    if (!VideoOut_ValidIo(io) || mode == 0)
+        return -1;
+    control = io->read_reg(io->context, REG_CTRL);
+    *mode = (control & CTRL_HDMI_LINK_MODE) ? VIDEO_OUT_LINK_HDMI : VIDEO_OUT_LINK_DVI;
     return 0;
 }
 

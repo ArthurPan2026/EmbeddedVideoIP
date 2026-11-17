@@ -148,6 +148,15 @@ int VideoOutXilinx_Configure(VideoOutXilinx *adapter,
                               vdma_bytes_per_pixel);
 }
 
+int VideoOutXilinx_SetLinkMode(VideoOutXilinx *adapter, VideoOutLinkMode mode)
+{
+    VideoOutIo io;
+    if (adapter == 0)
+        return -1;
+    io = VideoOutXilinx_GetIo(adapter);
+    return VideoOut_SetLinkMode(&io, mode);
+}
+
 int VideoOutXilinx_SetHdmiAudioEnabled(VideoOutXilinx *adapter, uint8_t enabled)
 {
     VideoOutIo io;

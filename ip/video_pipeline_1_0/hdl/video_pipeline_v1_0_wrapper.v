@@ -59,6 +59,7 @@ module video_pipeline_v1_0_wrapper #(
   output wire s_axi_rvalid,
   input wire s_axi_rready,
   output wire hdmi_audio_enable,
+  output wire hdmi_link_mode,
   output wire audio_mute,
   output wire [16:0] audio_gain_q15,
   input wire audio_underflow,
@@ -103,8 +104,9 @@ module video_pipeline_v1_0_wrapper #(
     .s_axi_araddr(s_axi_araddr), .s_axi_arvalid(s_axi_arvalid), .s_axi_arready(s_axi_arready),
     .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
     .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
-    .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
-    .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
+    .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode),
+    .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
+    .audio_underflow(audio_underflow),
     .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000)
   );
 endmodule

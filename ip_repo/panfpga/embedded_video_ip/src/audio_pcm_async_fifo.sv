@@ -25,7 +25,7 @@ module audio_pcm_async_fifo #(
   localparam int PTR_WIDTH = ADDR_WIDTH + 1;
   localparam int DEPTH = 1 << ADDR_WIDTH;
 
-  logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
+  (* ram_style = "distributed" *) logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
   logic [PTR_WIDTH-1:0] wr_bin, wr_gray, rd_bin, rd_gray;
   logic [PTR_WIDTH-1:0] rd_gray_wsync1, rd_gray_wsync2;
   logic [PTR_WIDTH-1:0] wr_gray_rsync1, wr_gray_rsync2;
@@ -71,6 +71,13 @@ module audio_pcm_async_fifo #(
     rd_level = wr_bin_sync - rd_bin;
   end
 
+  // Keep the RAM write port free of asynchronous-reset logic so Vivado can
+  // infer distributed memory. Pointer reset/clear makes old entries unreachable.
+  always_ff @(posedge wr_clk) begin
+    if (wr_resetn && !wr_clear && wr_fire)
+      mem[wr_bin[ADDR_WIDTH-1:0]] <= wr_data;
+  end
+
   always_ff @(posedge wr_clk or negedge wr_resetn) begin
     if (!wr_resetn) begin
       wr_bin <= '0;
@@ -81,8 +88,6 @@ module audio_pcm_async_fifo #(
       wr_gray <= '0;
       wr_full <= 1'b0;
     end else begin
-      if (wr_fire)
-        mem[wr_bin[ADDR_WIDTH-1:0]] <= wr_data;
       wr_bin <= wr_bin_next;
       wr_gray <= wr_gray_next;
       wr_full <= wr_full_next;

@@ -4,7 +4,7 @@
 
 ## 工具与依赖
 
-项目与配套 PS 库版本取自 VERSION 文件，当前为 0.2.0-dev.4。外部 EmbeddedVideoIP VLNV 保持 panfpga.org:video:embedded_video_ip:1.0。
+项目与配套 PS 库版本取自 VERSION 文件，当前为 0.3.0-dev.1。外部 EmbeddedVideoIP VLNV 保持 panfpga.org:video:embedded_video_ip:1.0。
 
 - 当前 Zybo Z7-20 profile 固定 Vivado/Vitis 2025.2.1。
 - Digilent `TMDS_Encoder`、`DVI_Constants` 和 `OutputSERDES` 源码的来源提交与哈希固定在 `dependencies.lock.json`。
@@ -43,10 +43,10 @@ python3 tools/video_flow.py build --part xc7z020clg400-1 --profile vdma_scaler_b
 | `vdma_scaler_lutram` | 固定 VDMA/XRGB，最近邻 scaler 使用 LUTRAM | BRAM 紧张时 |
 | `vdma_scaler_bram` | 固定 VDMA/XRGB，最近邻 scaler 使用同步 BRAM | LUT 紧张时 |
 | `passthrough` | 固定 VDMA/XRGB，静态关闭 scaler | 不需要缩放时 |
-| `composite_audio_off` | Zybo 参考 profile，静态关闭 HDMI 音频 | 检查音频逻辑能否裁掉 |
+| `composite_audio_off` | Zybo 参考 profile，静态关闭 HDMI 音频 | 保留 AVI serializer，检查音频路径的静态裁剪 |
 | `composite_audio_on` | 相同视频 profile，启用 HDMI 音频 | 对比音频逻辑的资源开销 |
 
-音频 profile 使用同一个 EmbeddedVideoIP VLNV，只改变静态参数 `ENABLE_HDMI_AUDIO`。关闭音频时，综合应裁掉 PCM FIFO、HDMI 音频格式化和 packetizer；打开时支持双声道 48 kHz PCM。`validate` 和 OOC 综合分别覆盖音频开关，并记录资源与时序报告。
+音频 profile 使用同一个 EmbeddedVideoIP VLNV，只改变静态参数 `ENABLE_HDMI_AUDIO`。关闭音频时，综合会裁掉 PCM FIFO、LPCM/ACR/Audio InfoFrame 逻辑和动态包存储，保留固定 AVI Data Island 路径。开启音频时，综合双声道 48 kHz PCM 和通用 packet store。`validate` 和 OOC 综合分别覆盖音频开关，并记录资源与时序报告。
 
 ## 封装结构
 
