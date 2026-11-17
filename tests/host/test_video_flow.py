@@ -37,6 +37,9 @@ def write_synth_fixture(output_dir: Path, name: str = "fixture",
     (output_dir / "timing_summary.rpt").write_text(timing_report, encoding="utf-8")
     (output_dir / "clock_interaction.rpt").write_text("clock interaction fixture\n", encoding="utf-8")
     (output_dir / "ignored_timing_exceptions.rpt").write_text("ignored exceptions fixture\n", encoding="utf-8")
+    (output_dir / "methodology.rpt").write_text("methodology fixture\n", encoding="utf-8")
+    (output_dir / "cdc.rpt").write_text("CDC fixture\n", encoding="utf-8")
+    (output_dir / "bus_skew.rpt").write_text("bus skew fixture\n", encoding="utf-8")
     (output_dir / checkpoint_name).write_bytes(f"dcp-{name}".encode("ascii"))
 
 
@@ -274,6 +277,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_top.v",
             "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
             "ip/video_pipeline_1_0/hdl/audio_event_pulse_sync.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_gain_bus_cdc.sv",
             "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv",
             "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv",
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv",
@@ -308,6 +312,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "tests/rtl/tb_video_pipeline_v1_0.sv",
             "tests/rtl/tb_video_pipeline_static_profile.sv",
             "tests/rtl/tb_hdmi_runtime_status.sv",
+            "tests/rtl/tb_hdmi_gain_bus_cdc.sv",
             "tests/rtl/tb_hdmi_primitives.sv",
             "tests/rtl/tb_hdmi_audio_packets.sv",
             "tests/rtl/tb_audio_pcm_async_fifo.sv",
@@ -334,6 +339,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             before = video_flow.input_manifest("synth", root)
             selected = set(before)
             self.assertIn("tools/synth_core.tcl", selected)
+            self.assertIn("ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc", selected)
             self.assertIn("ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", selected)
             self.assertNotIn("docs/architecture.md", selected)
             self.assertNotIn("tests/rtl/tb_video_pipeline_v1_0.sv", selected)
@@ -343,6 +349,11 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             (root / "tests/rtl/tb_video_pipeline_v1_0.sv").write_text("test changed\n", encoding="utf-8")
             (root / "software/video_out.c").write_text("PS changed\n", encoding="utf-8")
             self.assertEqual(video_flow.input_manifest("synth", root), before)
+
+            (root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc").write_text(
+                "timing constraints changed\n", encoding="utf-8"
+            )
+            self.assertNotEqual(video_flow.input_manifest("synth", root), before)
 
             (root / "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv").write_text(
                 "RTL changed\n", encoding="utf-8"
@@ -367,6 +378,8 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertNotIn("software/video_out.c", package)
             self.assertIn("tests/rtl/tb_video_pipeline_v1_0.sv", sim)
             self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", sim)
+            self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_gain_bus_cdc.sv", sim)
+            self.assertIn("tests/rtl/tb_hdmi_gain_bus_cdc.sv", sim)
             self.assertIn("software/video_out.c", sim)
             self.assertIn("software/platforms/xilinx_zynq7000/video_out_xilinx.c", sim)
             self.assertIn("VERSION", sim)

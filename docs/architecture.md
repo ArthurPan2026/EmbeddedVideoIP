@@ -60,6 +60,15 @@ V1 的 VTC profile 固定为 640×480p60。Zybo Z7-20 使用 50 MHz 参考时钟
 
 PL 内部由 7-series TX 负责 HDMI/DVI framing、行槽位、AVI/音频 packet 调度和 BCH 组包。DVI-safe 是复位默认状态；AXI-Lite bit 13 只表达 PS 的模式请求，TX 在像素时钟域同步后等待当前包结束和HSync 边沿消隐期切换。AVI 和 Audio InfoFrame 的发送标志由像素域 VSYNC 上升沿重置，避免维护重复的行计数器。GBA PS 读取并校验 E-EDID/CEA 扩展，在识别 HDMI VSDB 后才发出 HDMI 请求。协议字段及 CTS 对应项见 [HDMI 1.4b 合规映射](hdmi-1.4b-conformance.md)。
 
+## CDC 与复位边界
+
+跨域单比特控制先进入目标时钟域的两级同步器。每一级寄存器都标记为 `ASYNC_REG`。音频使能请求和 HDMI 实际链路状态分别同步，再在 PCM 域与像素域组合。
+
+`Q15` 增益通过请求/应答握手跨到像素域。发送端在收到确认前保持增益总线稳定。像素域同步请求和总线，确认后一次性更新有效增益。握手未完成时，发送端保留当前值；确认后再发送最新写入值。像素域复位释放后，发送端也会重发当前增益。
+
+PCM 异步 FIFO 使用寄存的 Gray 指针。两级指针同步器标记为 `ASYNC_REG`，综合器保留源端 Gray 指针寄存器。XDC 把 Gray 总线最大延迟限制在 8 ns 内，并把位间偏斜限制在 3 ns 内。FIFO 只在读指针同步确认数据有效后读取存储器。
+
+运行状态计数器在像素和串行时钟域内分别使用异步置位、同步释放的复位。音频开关两种 OOC `report_cdc` 报告均无 Critical 项。音频开启报告还保留 1 条 CDC-6 增益总线握手提示，以及 128 条 CDC-15 FIFO 存储器访问提示。对应文件位于 OOC profile 目录，包含 cdc.rpt、bus_skew.rpt 和 methodology.rpt。
 ## PS 控制接口
 
 单一 AXI4-Lite 接口包含视频处理控制和 HDMI 音频控制。配套 PS API 计算 fit/stretch 的有效区域和 DDA 比例，再提交视频配置；音频 API 写 HDMI 使能、静音和增益并读取 FIFO 欠载状态。完整字段定义见[寄存器表](register-map.md)，顶层端口见[组合式 IP 接口](composite-ip-api.md)。

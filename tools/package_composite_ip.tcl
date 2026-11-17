@@ -23,6 +23,8 @@ set cdc_xdc_file [get_files -quiet $cdc_xdc]
 if {[llength $cdc_xdc_file] != 1} { error "CDC XDC 未加入打包工程" }
 set_property SCOPED_TO_REF embedded_video_ip_top $cdc_xdc_file
 set_property PROCESSING_ORDER LATE $cdc_xdc_file
+set_property USED_IN_SYNTHESIS true $cdc_xdc_file
+set_property USED_IN_IMPLEMENTATION true $cdc_xdc_file
 create_bd_design embedded_video_ip_video_out
 set aclk [create_bd_port -dir I -type clk -freq_hz 100000000 aclk]
 set_property CONFIG.FREQ_HZ 100000000 $aclk
@@ -113,6 +115,7 @@ set_property top embedded_video_ip_top [current_fileset]
 update_compile_order -fileset sources_1
 ipx::package_project -root_dir $package_root -vendor panfpga.org -library video -taxonomy /Video -import_files -force
 set core [ipx::current_core]
+set_property core_revision 2 $core
 set version_fd [open [file join $repo_root VERSION] r]
 set product_version [string trim [read $version_fd]]
 close $version_fd
@@ -182,6 +185,26 @@ foreach {param value} {
   if {[llength $iparam] > 0} { set_property value $value $iparam }
 }
 ipx::save_core $core
+
+# Mark the scoped CDC XDC for both implementation and synthesis. IPX imports
+# user XDC files as out-of-context-only unless these usage flags are explicit.
+set component_xml [file join $package_root component.xml]
+set component_fd [open $component_xml r]
+set component_text [read $component_fd]
+close $component_fd
+set xdc_marker {<spirit:name>src/embedded_video_ip_clocks.xdc</spirit:name>
+        <spirit:userFileType>xdc</spirit:userFileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>}
+if {[string first $xdc_marker $component_text] < 0} {
+  error "Composite IP component.xml is missing its CDC XDC file entry"
+}
+set xdc_replacement "$xdc_marker
+        <spirit:userFileType>USED_IN_synthesis</spirit:userFileType>
+        <spirit:userFileType>USED_IN_implementation</spirit:userFileType>"
+set component_text [string map [list $xdc_marker $xdc_replacement] $component_text]
+set component_fd [open $component_xml w]
+puts -nonewline $component_fd $component_text
+close $component_fd
 set third_party_notice [file join $third_party_dir NOTICE.md]
 if {![file isfile $third_party_notice]} { error "Missing Digilent source notice: $third_party_notice" }
 set packaged_notice_dir [file join $package_root third_party digilent-rgb2dvi]

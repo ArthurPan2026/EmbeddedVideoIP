@@ -84,6 +84,7 @@ module embedded_video_ip_top #(
   wire hdmi_link_mode;
   wire audio_mute;
   wire [16:0] audio_gain_q15;
+  wire [16:0] audio_gain_pixel;
   wire audio_underflow_event_pixel;
   wire audio_overflow_event_audio;
   wire audio_pcm_resetn_sync;
@@ -164,6 +165,13 @@ module embedded_video_ip_top #(
     .pixel_reset_ext_asserted(pixel_reset_ext_asserted)
   );
 
+  // The gain control bus is held stable until the pixel domain acknowledges
+  // each update, so the active gain changes atomically across the clock boundary.
+  hdmi_gain_bus_cdc u_audio_gain_cdc (
+    .src_clk(aclk), .src_resetn(aresetn), .src_gain_q15(audio_gain_q15),
+    .dst_clk(pixel_clk), .dst_resetn(pixel_aresetn), .dst_gain_q15(audio_gain_pixel)
+  );
+
   embedded_video_ip_7series_tx #(
     .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO),
     .AUDIO_SAMPLE_RATE_HZ(EVIP_AUDIO_SAMPLE_RATE_HZ),
@@ -181,7 +189,7 @@ module embedded_video_ip_top #(
     .audio_pcm_clk(audio_pcm_clk), .audio_pcm_tdata(s_axis_audio_pcm_tdata),
     .audio_pcm_tvalid(s_axis_audio_pcm_tvalid), .audio_pcm_tready(tx_audio_pcm_tready),
     .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
-    .audio_gain_q15(audio_gain_q15),
+    .audio_gain_q15(audio_gain_pixel),
     .tmds_tx_clk_p(tmds_tx_clk_p), .tmds_tx_clk_n(tmds_tx_clk_n),
     .tmds_tx_data_p(tmds_tx_data_p), .tmds_tx_data_n(tmds_tx_data_n),
     .audio_underflow_event(audio_underflow_event_pixel),

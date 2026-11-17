@@ -66,7 +66,11 @@ run_xsim tb_video_pipeline_static_profile \
   "$hdl/axi_lite_video_regs.sv" "$hdl/video_pipeline_v1_0.sv" \
   "$repo_root/tests/rtl/tb_video_pipeline_static_profile.sv"
 run_xsim tb_hdmi_runtime_status \
-  "$hdl/hdmi_runtime_status.sv" "$repo_root/tests/rtl/tb_hdmi_runtime_status.sv"
+  "$hdl/embedded_video_ip_reset_sync.sv" "$hdl/hdmi_runtime_status.sv" \
+  "$repo_root/tests/rtl/tb_hdmi_runtime_status.sv"
+run_xsim tb_hdmi_gain_bus_cdc \
+  "$hdl/embedded_video_ip_reset_sync.sv" "$hdl/hdmi_gain_bus_cdc.sv" \
+  "$repo_root/tests/rtl/tb_hdmi_gain_bus_cdc.sv"
 
 run_xsim tb_hdmi_primitives \
   "$hdl/audio_gain_q15.sv" "$hdl/hdmi_terc4_encoder.sv" \

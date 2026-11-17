@@ -1,6 +1,41 @@
-# EmbeddedVideoIP 内部 AXI、PCM 与 HDMI 时钟域的跨域路径约束。
-# 通过接口端口查询时钟，兼容消费工程对时钟对象的实际命名。
-set_clock_groups -asynchronous \
-  -group [get_clocks -quiet -of_objects [get_ports -quiet aclk]] \
-  -group [get_clocks -quiet -of_objects [get_ports -quiet audio_pcm_clk]] \
-  -group [get_clocks -quiet -include_generated_clocks -of_objects [get_ports -quiet hdmi_ref_clk]]
+# EmbeddedVideoIP CDC policy.
+# Synchronizer inputs and async reset pins are excluded from synchronous timing.
+# Gray FIFO pointers remain timed by max-delay and bus-skew constraints.
+set_false_path -quiet \
+  -from [get_clocks -quiet -of_objects [get_ports -quiet aclk]] \
+  -to [get_pins -quiet -of_objects [get_cells -quiet -hier -filter {ASYNC_REG == TRUE && NAME !~ *rd_gray_wsync1_reg* && NAME !~ *wr_gray_rsync1_reg*}] -filter {REF_PIN_NAME == D}]
+set_false_path -quiet \
+  -from [get_clocks -quiet -of_objects [get_ports -quiet audio_pcm_clk]] \
+  -to [get_pins -quiet -of_objects [get_cells -quiet -hier -filter {ASYNC_REG == TRUE && NAME !~ *rd_gray_wsync1_reg* && NAME !~ *wr_gray_rsync1_reg*}] -filter {REF_PIN_NAME == D}]
+set_false_path -quiet \
+  -from [get_clocks -quiet -include_generated_clocks -of_objects [get_ports -quiet hdmi_ref_clk]] \
+  -to [get_pins -quiet -of_objects [get_cells -quiet -hier -filter {ASYNC_REG == TRUE && NAME !~ *rd_gray_wsync1_reg* && NAME !~ *wr_gray_rsync1_reg*}] -filter {REF_PIN_NAME == D}]
+
+set_false_path -quiet \
+  -from [get_clocks -quiet -of_objects [get_ports -quiet aclk]] \
+  -to [get_pins -quiet -of_objects [get_cells -quiet -hier -filter {ASYNC_REG == TRUE}] -filter {REF_PIN_NAME == CLR || REF_PIN_NAME == PRE}]
+set_false_path -quiet \
+  -from [get_clocks -quiet -of_objects [get_ports -quiet audio_pcm_clk]] \
+  -to [get_pins -quiet -of_objects [get_cells -quiet -hier -filter {ASYNC_REG == TRUE}] -filter {REF_PIN_NAME == CLR || REF_PIN_NAME == PRE}]
+set_false_path -quiet \
+  -from [get_clocks -quiet -include_generated_clocks -of_objects [get_ports -quiet hdmi_ref_clk]] \
+  -to [get_pins -quiet -of_objects [get_cells -quiet -hier -filter {ASYNC_REG == TRUE}] -filter {REF_PIN_NAME == CLR || REF_PIN_NAME == PRE}]
+
+# The PCM FIFO holds each sample until its synchronized read pointer permits capture.
+set_false_path -quiet \
+  -from [get_clocks -quiet -of_objects [get_ports -quiet audio_pcm_clk]] \
+  -to [get_pins -quiet -hier -filter {NAME =~ *sample_buffer_reg*/D}]
+
+# Bound both directions of the asynchronous FIFO Gray-pointer bus.
+set_max_delay -quiet -datapath_only 8.000 \
+  -from [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/rd_gray_reg*/Q}] \
+  -to [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/rd_gray_wsync1_reg*/D}]
+set_bus_skew -quiet 3.000 \
+  -from [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/rd_gray_reg*/Q}] \
+  -to [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/rd_gray_wsync1_reg*/D}]
+set_max_delay -quiet -datapath_only 8.000 \
+  -from [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/wr_gray_reg*/Q}] \
+  -to [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/wr_gray_rsync1_reg*/D}]
+set_bus_skew -quiet 3.000 \
+  -from [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/wr_gray_reg*/Q}] \
+  -to [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/wr_gray_rsync1_reg*/D}]

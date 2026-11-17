@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-//Date        : Tue Nov 17 10:53:57 2026
+//Date        : Tue Nov 17 15:41:27 2026
 //Host        : pzy-fpga running 64-bit Ubuntu 22.04.5 LTS
 //Command     : generate_target embedded_video_ip_video_out_wrapper.bd
 //Design      : embedded_video_ip_video_out_wrapper

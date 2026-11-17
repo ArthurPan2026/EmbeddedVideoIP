@@ -109,7 +109,7 @@ module embedded_video_ip_7series_tx #(
     .line_prepare(line_prepare), .packet_active(packet_active),
     .audio_pcm_tdata(audio_pcm_tdata), .audio_pcm_tvalid(audio_pcm_tvalid),
     .audio_pcm_tready(audio_pcm_tready),
-    .hdmi_audio_enable(hdmi_audio_enable && hdmi_mode_active),
+    .hdmi_audio_enable(hdmi_audio_enable),
     .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
     .packet_ready(packet_ready), .packet_valid(packet_valid), .packet_cancel(packet_cancel),
     .packet_cancel_link(packet_cancel_link), .packet_header(packet_header), .packet_sub0(packet_sub0), .packet_sub1(packet_sub1),

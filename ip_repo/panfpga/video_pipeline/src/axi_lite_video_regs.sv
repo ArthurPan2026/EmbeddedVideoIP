@@ -136,7 +136,9 @@ module axi_lite_video_regs #(
     cfg_y_rem = y_ratio_reg[25:16];
     // CTRL[13] selects HDMI packet framing; reset/default 0 is DVI-safe.
     hdmi_link_mode = ctrl_reg[13];
-    hdmi_audio_enable = (ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0] && hdmi_link_mode;
+    // Export the raw request; the HDMI transmitter combines it with its
+    // synchronized link-active state inside each destination clock domain.
+    hdmi_audio_enable = (ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0];
     audio_mute = audio_ctrl_reg[1];
     audio_gain_q15 = audio_gain_reg;
 
@@ -158,7 +160,8 @@ module axi_lite_video_regs #(
       REG_ACTIVE_SIZE: read_value = {6'd0, active_height, 6'd0, active_width};
       REG_AUDIO_CTRL: read_value = audio_ctrl_reg;
       REG_AUDIO_GAIN_Q15: read_value = {15'd0, audio_gain_reg};
-      REG_AUDIO_STATUS: read_value = {29'd0, audio_overflow_sticky, audio_underflow_sticky, hdmi_audio_enable};
+      REG_AUDIO_STATUS: read_value = {29'd0, audio_overflow_sticky, audio_underflow_sticky,
+                                      ((ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0] && hdmi_link_mode)};
       default: read_value = 32'd0;
     endcase
   end

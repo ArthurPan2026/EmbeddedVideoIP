@@ -26,9 +26,12 @@ module audio_pcm_async_fifo #(
   localparam int DEPTH = 1 << ADDR_WIDTH;
 
   (* ram_style = "distributed" *) logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-  logic [PTR_WIDTH-1:0] wr_bin, wr_gray, rd_bin, rd_gray;
-  logic [PTR_WIDTH-1:0] rd_gray_wsync1, rd_gray_wsync2;
-  logic [PTR_WIDTH-1:0] wr_gray_rsync1, wr_gray_rsync2;
+  logic [PTR_WIDTH-1:0] wr_bin, rd_bin;
+  // Keep registered Gray pointers as the CDC source; recomputing Gray from the
+  // binary counter after synthesis can reintroduce multi-bit combinational skew.
+  (* DONT_TOUCH = "TRUE" *) logic [PTR_WIDTH-1:0] wr_gray, rd_gray;
+  (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) logic [PTR_WIDTH-1:0] rd_gray_wsync1, rd_gray_wsync2;
+  (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) logic [PTR_WIDTH-1:0] wr_gray_rsync1, wr_gray_rsync2;
   logic [PTR_WIDTH-1:0] wr_bin_next, wr_gray_next;
   logic [PTR_WIDTH-1:0] rd_bin_next, rd_gray_next;
   logic wr_full_next, rd_empty_next;

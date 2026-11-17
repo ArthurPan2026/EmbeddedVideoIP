@@ -48,6 +48,7 @@ SIM_HDL_FILES = (
     "video_pipeline_v1_0.sv",
     "video_pipeline_v1_0_wrapper.v",
     "audio_event_pulse_sync.sv",
+    "hdmi_gain_bus_cdc.sv",
     "audio_gain_q15.sv",
     "audio_pcm_async_fifo.sv",
     "embedded_video_ip_reset_sync.sv",
@@ -74,6 +75,7 @@ SIM_RTL_TEST_FILES = (
     "tb_video_pipeline_v1_0.sv",
     "tb_video_pipeline_static_profile.sv",
     "tb_hdmi_runtime_status.sv",
+    "tb_hdmi_gain_bus_cdc.sv",
     "tb_hdmi_primitives.sv",
     "tb_hdmi_audio_packets.sv",
     "tb_audio_pcm_async_fifo.sv",
@@ -102,6 +104,7 @@ SIM_TEST_LOG_RELS = (
     Path("out/tests/tb_video_pipeline_v1_0/run.log"),
     Path("out/tests/tb_video_pipeline_static_profile/run.log"),
     Path("out/tests/tb_hdmi_runtime_status/run.log"),
+    Path("out/tests/tb_hdmi_gain_bus_cdc/run.log"),
     Path("out/tests/tb_hdmi_primitives/run.log"),
     Path("out/tests/tb_hdmi_audio_packets/run.log"),
     Path("out/tests/tb_audio_pcm_async_fifo/run.log"),
@@ -284,6 +287,7 @@ def stage_input_paths(stage: str, root: Path = ROOT,
         paths = [
             *common,
             root / "tools/synth_core.tcl",
+            root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
             *(hdl_dir / name for name in SYNTH_HDL_FILES),
         ]
         if profile in COMPOSITE_SYNTH_PROFILES:
@@ -329,7 +333,8 @@ def synth_output_names(profile: str) -> tuple[str, ...]:
     if profile in COMPOSITE_SYNTH_PROFILES:
         return (
             "utilization.rpt", "timing_summary.rpt", "clock_interaction.rpt",
-            "ignored_timing_exceptions.rpt", synth_checkpoint_name(profile), "qor.json",
+            "ignored_timing_exceptions.rpt", "methodology.rpt", "cdc.rpt",
+            "bus_skew.rpt", synth_checkpoint_name(profile), "qor.json",
         )
     return (*SYNTH_REPORT_NAMES[:2], synth_checkpoint_name(profile), SYNTH_REPORT_NAMES[2])
 
@@ -560,6 +565,9 @@ def write_synth_qor(root: Path, part: str, profile: str, tool_version: str,
             **({
                 "clock_interaction.rpt": sha256_file(output_dir / "clock_interaction.rpt"),
                 "ignored_timing_exceptions.rpt": sha256_file(output_dir / "ignored_timing_exceptions.rpt"),
+                "methodology.rpt": sha256_file(output_dir / "methodology.rpt"),
+                "cdc.rpt": sha256_file(output_dir / "cdc.rpt"),
+                "bus_skew.rpt": sha256_file(output_dir / "bus_skew.rpt"),
             } if profile in COMPOSITE_SYNTH_PROFILES else {}),
             synth_checkpoint_name(profile): sha256_file(output_dir / synth_checkpoint_name(profile)),
         },

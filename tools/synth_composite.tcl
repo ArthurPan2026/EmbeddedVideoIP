@@ -55,11 +55,8 @@ if {![file isfile $wrapper_file]} { error "未生成 Composite 综合 wrapper" }
 add_files -norecurse $wrapper_file
 set_property top embedded_video_ip_synth_wrapper [current_fileset]
 update_compile_order -fileset sources_1
-set clock_xdc [file join $out_dir clocks.xdc]
-set clock_fd [open $clock_xdc w]
-puts $clock_fd {create_clock -name audio_pcm_clk -period 10.000 [get_ports -quiet audio_pcm_clk*]}
-close $clock_fd
-add_files -fileset constrs_1 $clock_xdc
+# The packaged clock bus interfaces carry FREQ_HZ metadata; use those clocks
+# instead of overriding scoped IP clocks with a duplicate OOC create_clock.
 set synth_run [get_runs -quiet synth_1]
 if {[llength $synth_run] == 0} {
   create_run synth_1 -flow {Vivado Synthesis 2025} -constrset constrs_1
@@ -81,6 +78,11 @@ if {![string match "*Complete*" [get_property STATUS $ooc_run]]} {
   error "EmbeddedVideoIP的OOC综合run未成功： [get_property STATUS $ooc_run]"
 }
 open_run $ooc_run
+# The composite top's XDC is scoped to the IP in the catalog project. Apply
+# the same CDC policy explicitly to this opened OOC run before reporting PPA.
+set cdc_xdc [file join $repo_root ip video_pipeline_1_0 constraints embedded_video_ip_clocks.xdc]
+if {![file isfile $cdc_xdc]} { error "缺少 EmbeddedVideoIP CDC XDC： $cdc_xdc" }
+source $cdc_xdc
 set axi_clock_group [get_clocks -quiet -include_generated_clocks *aclk*]
 set pcm_clock_group [get_clocks -quiet -include_generated_clocks *audio_pcm_clk*]
 set hdmi_clock_group [get_clocks -quiet -include_generated_clocks *hdmi_ref_clk*]
@@ -92,6 +94,9 @@ if {[llength $axi_clock_group] == 0 ||
 }
 report_clock_interaction -file [file join $out_dir clock_interaction.rpt]
 report_exceptions -ignored_objects -file [file join $out_dir ignored_timing_exceptions.rpt]
+report_methodology -file [file join $out_dir methodology.rpt]
+report_cdc -details -file [file join $out_dir cdc.rpt]
+report_bus_skew -warn_on_violation -file [file join $out_dir bus_skew.rpt]
 report_utilization -file [file join $out_dir utilization.rpt]
 report_timing_summary -delay_type min_max -file [file join $out_dir timing_summary.rpt]
 write_checkpoint -force [file join $out_dir embedded_video_ip.dcp]

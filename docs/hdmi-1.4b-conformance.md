@@ -27,7 +27,7 @@
 | LPCM 与 IEC 60958 状态 | HDMI 1.4b §7.3、§7.6；IEC 60958；CTS 7-30/7-32 | 保留 2ch 16-bit/48 kHz Layout 0 路径与通道状态、奇偶校验 | 既有 PCM/packet RTL 测试；分析仪音频 CTS 未执行 |
 | ACR 更新速率 | HDMI 1.4b §§7.2.3、7.8.2；CTS 7-29 | N=6144；按 128×Fs/N 做分数行累加，并从实际 ACR 包发送行计起；不再固定每 31 行 | RTL 仿真检查平均 line cadence；CTS 7-29 未执行 |
 | EDID 与 sink 判别 | HDMI 1.4b §§8.1、8.3–8.5；E-EDID 1.3、E-DDC v1；CTS 7-1/7-33 | GBA PS 侧按 100 kHz 读取扩展块、校验 checksum/CEA v3/HDMI VSDB；失效时请求 DVI-safe | GBA host parser tests；板级 DDC/HPD 测试未执行 |
-| CDC 与复位 | AMD 7-series CDC/时序设计规则 | link-mode request 双触发同步并在行/包边界生效；音频样本经异步 FIFO，控制量跨域同步 | RTL 与约束审查、OOC 报告；完整 post-route STA/CDC signoff 由消费工程完成 |
+| CDC 与复位 | AMD 7-series CDC/时序设计规则 | link-mode、音频使能和静音分别同步到目标域；Q15 增益用稳定数据与请求/应答握手；Gray FIFO 指针加 ASYNC_REG、8 ns 最大延迟和 3 ns 位间偏斜约束；像素/串行状态复位同步释放 | RTL 回归与 OOC report_cdc：无 Critical 项；音频开启时有 1 条 CDC-6 握手提示和 128 条 CDC-15 FIFO 存储器提示；GBA 消费构建提供集成时序/CDC 证据，不代表 HDMI CTS/ATC 认证 |
 
 ## 变更边界
 

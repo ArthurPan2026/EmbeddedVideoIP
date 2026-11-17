@@ -47,10 +47,13 @@ module hdmi_pcm_packet_source #(
     localparam integer ACR_PACKET_RATE_HZ = (128 * AUDIO_SAMPLE_RATE_HZ) / ACR_N;
     localparam integer ACR_LINE_PHASE_INCREMENT = ACR_PACKET_RATE_HZ * H_TOTAL;
 
-    logic audio_enable_meta, audio_enable_sync, audio_enable_prev;
-    logic pixel_enable_meta, pixel_enable_sync, pixel_enable_prev;
-    logic mute_meta, mute_sync;
-    logic [16:0] gain_meta, gain_sync;
+    (* ASYNC_REG = "TRUE" *) logic audio_enable_meta, audio_enable_sync;
+    (* ASYNC_REG = "TRUE" *) logic audio_link_meta, audio_link_sync;
+    logic audio_enable_prev;
+    (* ASYNC_REG = "TRUE" *) logic pixel_enable_meta, pixel_enable_sync;
+    logic pixel_enable_prev;
+    (* ASYNC_REG = "TRUE" *) logic mute_meta, mute_sync;
+    logic pixel_audio_enable, audio_run_enable;
     logic wr_clear, rd_clear;
     logic rd_flush_pending;
     logic [31:0] fifo_rd_data;
@@ -86,16 +89,23 @@ module hdmi_pcm_packet_source #(
     logic [55:0] avi_sub [0:3];
     integer sample_index;
 
-    // 使能、静音和增益通过两级触发器同步；音频数据使用异步FIFO跨域。
+    // HDMI 请求分别同步到 PCM 与像素时钟域，再与像素域的实际链路状态组合。
+    assign pixel_audio_enable = pixel_enable_sync && hdmi_mode_active;
+    assign audio_run_enable = audio_enable_sync && audio_link_sync;
+
     always_ff @(posedge audio_pcm_clk or negedge audio_pcm_aresetn) begin
       if (!audio_pcm_aresetn) begin
         audio_enable_meta <= 1'b0;
         audio_enable_sync <= 1'b0;
+        audio_link_meta <= 1'b0;
+        audio_link_sync <= 1'b0;
         audio_enable_prev <= 1'b0;
       end else begin
         audio_enable_meta <= hdmi_audio_enable;
         audio_enable_sync <= audio_enable_meta;
-        audio_enable_prev <= audio_enable_sync;
+        audio_link_meta <= hdmi_mode_active;
+        audio_link_sync <= audio_link_meta;
+        audio_enable_prev <= audio_run_enable;
       end
     end
 
@@ -106,39 +116,35 @@ module hdmi_pcm_packet_source #(
         pixel_enable_prev <= 1'b0;
         mute_meta <= 1'b0;
         mute_sync <= 1'b0;
-        gain_meta <= 17'd32768;
-        gain_sync <= 17'd32768;
         rd_flush_pending <= 1'b1;
       end else begin
         pixel_enable_meta <= hdmi_audio_enable;
         pixel_enable_sync <= pixel_enable_meta;
-        pixel_enable_prev <= pixel_enable_sync;
+        pixel_enable_prev <= pixel_audio_enable;
         mute_meta <= audio_mute;
         mute_sync <= mute_meta;
-        gain_meta <= audio_gain_q15;
-        gain_sync <= gain_meta;
 
-        if (pixel_enable_sync != pixel_enable_prev)
+        if (pixel_audio_enable != pixel_enable_prev)
           rd_flush_pending <= 1'b1;
         else if (rd_flush_pending && !packet_active)
           rd_flush_pending <= 1'b0;
       end
     end
 
-    assign wr_clear = (audio_enable_sync != audio_enable_prev);
+    assign wr_clear = (audio_run_enable != audio_enable_prev);
     assign rd_clear = rd_flush_pending && !packet_active;
-    assign audio_pcm_tready = !audio_enable_sync || (fifo_wr_ready && !wr_clear);
+    assign audio_pcm_tready = !audio_run_enable || (fifo_wr_ready && !wr_clear);
     assign audio_overflow_event = 1'b0;
     // A pending packet may be discarded only after the link has safely selected DVI.
     // Audio disable stops future audio packets; a loaded packet completes at its boundary.
-    assign packet_cancel = !pixel_enable_sync && !packet_active;
+    assign packet_cancel = !pixel_audio_enable && !packet_active;
     assign packet_cancel_link = !hdmi_mode_active && !packet_active;
 
     audio_pcm_async_fifo #(
       .DATA_WIDTH(32), .ADDR_WIDTH(FIFO_ADDR_WIDTH)
     ) u_audio_fifo (
       .wr_clk(audio_pcm_clk), .wr_resetn(audio_pcm_aresetn), .wr_clear(wr_clear),
-      .wr_data(audio_pcm_tdata), .wr_valid(audio_pcm_tvalid && audio_enable_sync && !wr_clear),
+      .wr_data(audio_pcm_tdata), .wr_valid(audio_pcm_tvalid && audio_run_enable && !wr_clear),
       .wr_ready(fifo_wr_ready), .wr_full(fifo_wr_full), .wr_level(fifo_wr_level),
       .rd_clk(pixel_clk), .rd_resetn(pixel_aresetn), .rd_clear(rd_clear),
       .rd_data(fifo_rd_data), .rd_valid(fifo_rd_valid),
@@ -153,16 +159,16 @@ module hdmi_pcm_packet_source #(
       acr_line_tick = acr_line_phase_sum >= ACR_PHASE_SUM_WIDTH'(PIXEL_CLOCK_HZ);
     end
 
-    assign fifo_rd_ready = pixel_enable_sync && !rd_flush_pending &&
+    assign fifo_rd_ready = pixel_audio_enable && !rd_flush_pending &&
                            (buffered_sample_count < 3'd4);
     assign rd_fire = fifo_rd_valid && fifo_rd_ready;
     assign vsync_rise = vsync && !vsync_q;
     audio_gain_q15 u_gain_left (
-      .sample_in($signed(fifo_rd_data[15:0])), .gain_q15(gain_sync),
+      .sample_in($signed(fifo_rd_data[15:0])), .gain_q15(audio_gain_q15),
       .mute(mute_sync), .sample_out(gained_left)
     );
     audio_gain_q15 u_gain_right (
-      .sample_in($signed(fifo_rd_data[31:16])), .gain_q15(gain_sync),
+      .sample_in($signed(fifo_rd_data[31:16])), .gain_q15(audio_gain_q15),
       .mute(mute_sync), .sample_out(gained_right)
     );
 
@@ -175,7 +181,7 @@ module hdmi_pcm_packet_source #(
         audio_underflow_event <= 1'b0;
       end else begin
         audio_underflow_event <= 1'b0;
-        if (!pixel_enable_sync || rd_flush_pending) begin
+        if (!pixel_audio_enable || rd_flush_pending) begin
           sample_phase <= '0;
           audio_started <= 1'b0;
           startup_sample_count <= 3'd0;
@@ -259,12 +265,12 @@ module hdmi_pcm_packet_source #(
 
     always_comb begin
       selected_packet = PACKET_NONE;
-      if (hdmi_mode_active && pixel_enable_sync && !rd_flush_pending &&
+      if (pixel_audio_enable && !rd_flush_pending &&
           (acr_due || acr_line_tick)) begin
         selected_packet = PACKET_ACR;
       end else if (hdmi_mode_active && avi_due) begin
         selected_packet = PACKET_AVI;
-      end else if (hdmi_mode_active && pixel_enable_sync && !rd_flush_pending) begin
+      end else if (pixel_audio_enable && !rd_flush_pending) begin
         if (infoframe_due)
           selected_packet = PACKET_INFOFRAME;
         else if (buffered_sample_count != 3'd0)
@@ -335,10 +341,10 @@ module hdmi_pcm_packet_source #(
           avi_due <= 1'b1;
         end
 
-        if (!hdmi_mode_active || !pixel_enable_sync || rd_flush_pending) begin
+        if (!pixel_audio_enable || rd_flush_pending) begin
           acr_due <= 1'b1;
           acr_line_phase <= '0;
-          if (!pixel_enable_sync || rd_flush_pending)
+          if (!pixel_audio_enable || rd_flush_pending)
             infoframe_due <= 1'b1;
         end else if (line_prepare) begin
           if (packet_valid && packet_ready && selected_packet == PACKET_ACR) begin
