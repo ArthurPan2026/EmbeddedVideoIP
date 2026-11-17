@@ -587,6 +587,9 @@ class VideoFlowCacheTests(unittest.TestCase):
                     path = Path(cwd).parent / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text("TEST_PASS: fixture\\n", encoding="utf-8")
+                bmp_path = Path(cwd).parent / video_flow.SIM_LINE_START_BMP_REL
+                bmp_path.parent.mkdir(parents=True, exist_ok=True)
+                bmp_path.write_bytes(b"BMfixture")
                 return SimpleNamespace(
                     returncode=0,
                     stdout="VIDEO_TESTS_PASS\\n",
@@ -615,6 +618,15 @@ class VideoFlowCacheTests(unittest.TestCase):
                 success_marker="VIDEO_TESTS_PASS",
             ))
             self.assertEqual(len(calls), 2)
+
+            bmp_path = root / video_flow.SIM_LINE_START_BMP_REL
+            bmp_path.write_bytes(b"tampered BMP")
+            self.assertTrue(video_flow.run_stage(
+                "sim", command, Path("/fake/vivado"), inputs,
+                root=root, tool_version="2025.2.1", runner=runner,
+                success_marker="VIDEO_TESTS_PASS",
+            ))
+            self.assertEqual(len(calls), 3)
 
     def test_missing_required_output_prevents_cache_hit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

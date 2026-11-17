@@ -13,9 +13,9 @@ module hdmi_avi_infoframe (
     header = {8'h0D, 8'h02, 8'h82};
     for (i = 0; i < 28; i = i + 1)
       payload[i] = 8'h00;
-    // PB1: A=1, no bar/scan flags, RGB. PB2: default colorimetry, 4:3 picture,
+    // PB1: Y1:Y0=00 selects RGB; A0=1, no bar/scan flags. PB2: default colorimetry, 4:3 picture,
     // with active-format aspect equal to the picture aspect.
-    payload[1] = 8'h20;
+    payload[1] = 8'h10;
     payload[2] = 8'h18;
     // PB3: full RGB range for VGA. PB4: VIC 1; pixel repetition is zero.
     payload[3] = 8'h08;

@@ -4,7 +4,7 @@
 
 ## 工具与依赖
 
-项目与配套 PS 库版本取自 VERSION 文件，当前为 0.3.0-dev.1。外部 EmbeddedVideoIP VLNV 保持 panfpga.org:video:embedded_video_ip:1.0。
+项目与配套 PS 库版本取自 VERSION 文件，当前为 0.3.0-dev.2。外部 EmbeddedVideoIP VLNV 保持 panfpga.org:video:embedded_video_ip:1.0。
 
 - 当前 Zybo Z7-20 profile 固定 Vivado/Vitis 2025.2.1。
 - Digilent `TMDS_Encoder`、`DVI_Constants` 和 `OutputSERDES` 源码的来源提交与哈希固定在 `dependencies.lock.json`。

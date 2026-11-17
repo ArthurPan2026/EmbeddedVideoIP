@@ -1,4 +1,4 @@
-# HDMI 1.4b 合规映射（EmbeddedVideoIP 0.3.0-dev.1）
+# HDMI 1.4b 合规映射（EmbeddedVideoIP 0.3.0-dev.2）
 
 本文以用户提供的 HDMI Specification 1.4b 为强制基线。规范 §1.2 要求遵守 HDMI 1.4b 所列的规范性引用；视频格式遵循 CEA-861-D，EDID/DDC 使用 EDID 1.3、E-EDID A.1 与 E-DDC v1，音频按适用的 IEC 60958/61937 要求。只有 §6.3 明确允许详细时序参考后续版本；本实现不以 HDMI 2.x/FRL 或较新 CTA 版本扩展范围。
 
@@ -21,7 +21,7 @@
 |---|---|---|---|
 | 最低视频模式、像素格式与颜色范围 | HDMI 1.4b §§6.2.1、6.2.3–6.2.4、6.6；CEA-861-D | 固定 VIC 1、RGB 24 bpp、Full Range | RTL profile 与 AVI payload 仿真；电气/时序 tolerance 仍须 CTS 测量 |
 | DVI 与 HDMI 传输区别 | HDMI 1.4b §§4.2、5.2；DVI 1.0 | 无 HDMI VSDB 或复位时输出 DVI 视频/控制符号，不插入 HDMI 前导、保护带或 Data Island；确认 HDMI 后才在HSync 边沿消隐期切换 | scheduler 与链路切换 RTL 测试；未做 DVI/HDMI 显示器兼容测试 |
-| HDMI 视频信息 | HDMI 1.4b §8.2.1；CEA-861-D AVI InfoFrame；CTS 7-27 | 每场调度版本 2、13 字节 AVI InfoFrame：PB1=A valid/RGB/no bar flags；PB2=C=00（VGA 默认 sRGB）、M=4:3、R=8；PB3=Q full-range；PB4=VIC 1；PR=0；checksum 由固定 payload 计算，BCH 由统一 packet assembler 生成 | RTL 检查 header、payload、checksum 与 audio-off 发包；真实 CTS 7-27 未执行 |
+| HDMI 视频信息 | HDMI 1.4b §8.2.1；CEA-861-D AVI InfoFrame；CTS 7-27 | 每场调度版本 2、13 字节 AVI InfoFrame：PB1 的 Y1:Y0=00（RGB）、A0=1、B1:B0=00、S1:S0=00，故 PB1=0x10；位域按 HDMI 1.4b Table 8-2（第 135 页）；PB2=C=00（VGA 默认 sRGB）、M=4:3、R=8；PB3=Q full-range；PB4=VIC 1；PR=0；checksum 由固定 payload 计算，BCH 由统一 packet assembler 生成 | RTL 检查 header、payload、checksum 与 audio-off 发包；真实 CTS 7-27 未执行 |
 | Data Island 最低频度与编码 | HDMI 1.4b §§5.2.1、5.2.3.2、5.3；CTS 7-17/7-19 | HDMI 模式每场调度 AVI island；VSYNC 每场重置发送标志，并在下一可用行槽发送 AVI；packet 由 BCH 编码 | scheduler/packet source/assembler RTL 测试；CTS 仪器测试未执行 |
 | Extended Control Period | HDMI 1.4b §5.2.1.2；CTS 7-18 | 水平消隐在岛尾与视频前导/活动区之间保留控制字符；VIC 1 profile 连续控制段超过 32 字符 | scheduler RTL 检查 32 字符控制段；CTS 7-18 仪器测试未执行 |
 | LPCM 与 IEC 60958 状态 | HDMI 1.4b §7.3、§7.6；IEC 60958；CTS 7-30/7-32 | 保留 2ch 16-bit/48 kHz Layout 0 路径与通道状态、奇偶校验 | 既有 PCM/packet RTL 测试；分析仪音频 CTS 未执行 |

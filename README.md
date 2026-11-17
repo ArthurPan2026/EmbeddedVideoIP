@@ -1,6 +1,6 @@
 # EmbeddedVideoIP
 
-EmbeddedVideoIP 0.3.0-dev.1 是面向 Vivado PL+PS 工程的可复用视频输出子系统。消费者在 Vivado IP Integrator 中使用一个组合式顶层 IP；内部集成视频处理、输出时序、HDMI 发送适配和可选 HDMI 音频。配套 PS C 库负责配置视频、VDMA 和 HDMI 音频。
+EmbeddedVideoIP 0.3.0-dev.2 是面向 Vivado PL+PS 工程的可复用视频输出子系统。消费者在 Vivado IP Integrator 中使用一个组合式顶层 IP；内部集成视频处理、输出时序、HDMI 发送适配和可选 HDMI 音频。配套 PS C 库负责配置视频、VDMA 和 HDMI 音频。
 
 V1 只交付 PL+PS 配套产品，不支持 PL-only。当前 HDMI 发送目标严格限于 HDMI 1.4b：固定 VIC 1 640×480p60 RGB 8-bit，并按接收端 EDID 的 HDMI VSDB 在 DVI/HDMI framing 间安全切换。功能与验证边界见[HDMI 1.4b 合规映射](docs/hdmi-1.4b-conformance.md)。既有视频输出路径已在 Zybo Z7-20 / XC7Z020 / Zynq-7000 上验证，构建工具为 Vivado/Vitis 2025.2.1。2026-11-16 已在 GBA 消费工程上完成 HDMI 音频信号路径预验证：C1-1 USB3 Audio 采到 48 kHz PCM，且采集电平随音量设定变化。这证明音频数据到达采集卡，不代表显示器扬声器听感或 HDMI 标准符合性已经通过；正式板级验收与 HDMI 认证仍未完成。细节见[HDMI 音频预验证记录](docs/validation-2026-11-16-hdmi-audio.md)。
 

@@ -42,6 +42,17 @@ module tb_embedded_video_ip_7series_tx;
   integer video_boundary_state=0; // 0=等待前导，1=前导，2=保护带，3=活动视频
   integer video_preamble_symbols=0, video_guard_symbols=0;
   integer video_boundaries_checked=0;
+  integer video_first_pixel_index=0;
+  integer video_first_pixel_checks=0;
+  integer video_first_pixel_error=0;
+  logic [23:0] expected_video_rgb;
+  logic [23:0] encoder_rgb_d1=24'd0, encoder_rgb_d2=24'd0, encoder_rgb_d3=24'd0;
+  logic encoder_de_d1=1'b0, encoder_de_d2=1'b0, encoder_de_d3=1'b0;
+  logic [23:0] bmp_frame [0:V_ACTIVE_SIZE-1][0:H_ACTIVE_SIZE-1];
+  integer bmp_capture_enable=0;
+  integer bmp_rows_captured=0;
+  integer bmp_pixel_index=0;
+  integer bmp_fd=0;
 
   always #10 pixel_clk=~pixel_clk;
   always #2 serial_clk=~serial_clk;
@@ -51,10 +62,12 @@ module tb_embedded_video_ip_7series_tx;
     video_de=(line_index<V_ACTIVE_SIZE) && (test_x<H_ACTIVE_SIZE);
     hsync=(test_x>=H_SYNC_START && test_x<H_SYNC_START+16);
     vsync=(line_index>=49 && line_index<52);
-    case (test_x%3)
-      0: video_rgb=24'hFF0000; // 红色通道为FF，绿色和蓝色通道为0
-      1: video_rgb=24'h0000FF; // 绿色通道为FF，红色和蓝色通道为0
-      default: video_rgb=24'h00FF00; // 蓝色通道为FF，红色和绿色通道为0
+    case (test_x)
+      0: video_rgb=24'hFF0000; // 行首标记：红色
+      1: video_rgb=24'h0000FF; // 行首标记：绿色（RBG打包）
+      2: video_rgb=24'h00FF00; // 行首标记：蓝色（RBG打包）
+      3: video_rgb=24'hFFFFFF; // 行首标记：白色
+      default: video_rgb=24'h808080; // 其余像素固定灰色，便于观察行首过渡
     endcase
     audio_phase_sum=audio_phase+AUDIO_SAMPLE_RATE_HZ;
     audio_sample_due=(audio_phase_sum>=AUDIO_CLOCK_HZ);
@@ -77,6 +90,61 @@ module tb_embedded_video_ip_7series_tx;
       test_x<=test_x+1'b1;
     end
   end
+
+
+  task automatic write_bmp_byte(input integer value);
+    begin
+      $fwrite(bmp_fd,"%c",value & 8'hFF);
+    end
+  endtask
+
+  task automatic write_bmp_u16(input integer value);
+    begin
+      write_bmp_byte(value & 8'hFF);
+      write_bmp_byte((value >> 8) & 8'hFF);
+    end
+  endtask
+
+  task automatic write_bmp_u32(input integer value);
+    begin
+      write_bmp_byte(value & 8'hFF);
+      write_bmp_byte((value >> 8) & 8'hFF);
+      write_bmp_byte((value >> 16) & 8'hFF);
+      write_bmp_byte((value >> 24) & 8'hFF);
+    end
+  endtask
+
+  task automatic write_line_start_bmp;
+    integer row, col, pad, image_bytes;
+    logic [23:0] pixel;
+    begin
+      image_bytes = H_ACTIVE_SIZE * V_ACTIVE_SIZE * 3;
+      pad = (4 - ((H_ACTIVE_SIZE * 3) % 4)) % 4;
+      bmp_fd = $fopen("hdmi_tx_line_start.bmp","wb");
+      if (bmp_fd == 0)
+        $fatal(1,"无法创建 hdmi_tx_line_start.bmp");
+      write_bmp_byte(8'h42); write_bmp_byte(8'h4D);
+      write_bmp_u32(54 + image_bytes + pad * V_ACTIVE_SIZE);
+      write_bmp_u16(0); write_bmp_u16(0); write_bmp_u32(54);
+      write_bmp_u32(40); write_bmp_u32(H_ACTIVE_SIZE); write_bmp_u32(V_ACTIVE_SIZE);
+      write_bmp_u16(1); write_bmp_u16(24); write_bmp_u32(0);
+      write_bmp_u32(image_bytes + pad * V_ACTIVE_SIZE);
+      write_bmp_u32(2835); write_bmp_u32(2835); write_bmp_u32(0); write_bmp_u32(0);
+      for (row = V_ACTIVE_SIZE-1; row >= 0; row = row-1) begin
+        for (col = 0; col < H_ACTIVE_SIZE; col = col+1) begin
+          pixel = bmp_frame[row][col]; // TX输入为RBG；BMP要求B,G,R字节序
+          write_bmp_byte(pixel[15:8]);
+          write_bmp_byte(pixel[7:0]);
+          write_bmp_byte(pixel[23:16]);
+        end
+        for (col = 0; col < pad; col = col+1)
+          write_bmp_byte(0);
+      end
+      $fclose(bmp_fd);
+      bmp_fd = 0;
+      $display("BMP_PASS: hdmi_tx_line_start.bmp (%0dx%0d)",H_ACTIVE_SIZE,V_ACTIVE_SIZE);
+    end
+  endtask
 
   // AXI4-Stream源按48 kHz平均速率送出PCM立体声样本。
   always_ff @(posedge audio_pcm_clk or negedge aresetn) begin
@@ -145,17 +213,41 @@ module tb_embedded_video_ip_7series_tx;
   end
 
   always @(posedge pixel_clk) begin
+    // Track the RGB/DE values sampled by TMDS Encoder Stage 1. The 3-stage
+    // mode pipe and Digilent's 3 registered encoder stages are observed after
+    // the same edge; this history aligns the displayed symbol with its pixel.
+    encoder_rgb_d1 <= dut.rgb_pipe[10];
+    encoder_rgb_d2 <= encoder_rgb_d1;
+    encoder_rgb_d3 <= encoder_rgb_d2;
+    encoder_de_d1 <= dut.de_pipe[10];
+    encoder_de_d2 <= encoder_de_d1;
+    encoder_de_d3 <= encoder_de_d2;
     #1;
     if (aresetn && !dut.hdmi_mode_active) begin
       // DVI-safe startup is legal until the synchronized HDMI request takes effect.
       video_boundary_state=0;
     end else if (aresetn) begin
+      if (bmp_capture_enable != 0 &&
+          dut.u_hdmi_mode_mux.mode_pipe[2] == MODE_VIDEO) begin
+        if (video_boundary_state == 2 && bmp_rows_captured < V_ACTIVE_SIZE) begin
+          bmp_frame[bmp_rows_captured][0] =
+              (encoder_de_d3 === 1'b1) ? encoder_rgb_d3 : 24'hFF00FF;
+          bmp_pixel_index = 1;
+          bmp_rows_captured = bmp_rows_captured + 1;
+        end else if (video_boundary_state == 3 && bmp_rows_captured > 0 &&
+                     bmp_pixel_index < H_ACTIVE_SIZE) begin
+          bmp_frame[bmp_rows_captured-1][bmp_pixel_index] =
+              (encoder_de_d3 === 1'b1) ? encoder_rgb_d3 : 24'hFF00FF;
+          bmp_pixel_index = bmp_pixel_index + 1;
+        end
+      end
       case (dut.u_hdmi_mode_mux.mode_pipe[2])
         MODE_VIDEO_PREAMBLE: begin
           if ((video_boundary_state == 0) || (video_boundary_state == 3)) begin
             video_boundary_state = 1;
             video_preamble_symbols = 0;
             video_guard_symbols = 0;
+            video_first_pixel_index = 0;
           end
           if (video_boundary_state != 1)
             $fatal(1,"视频前导未从空闲态开始");
@@ -178,8 +270,28 @@ module tb_embedded_video_ip_7series_tx;
           if (video_boundary_state == 2) begin
             if (video_guard_symbols != 2)
               $fatal(1,"视频保护带应为2拍，实际=%0d",video_guard_symbols);
+            if (encoder_de_d3 !== 1'b1 || encoder_rgb_d3 !== 24'hFF0000) begin
+              video_first_pixel_error = 1;
+              $display("LINE_START_MISMATCH: first de=%b rgb=%06h",
+                       encoder_de_d3,encoder_rgb_d3);
+            end
+            video_first_pixel_index = 1;
+            video_first_pixel_checks = video_first_pixel_checks + 1;
             video_boundaries_checked = video_boundaries_checked + 1;
             video_boundary_state = 3;
+          end else if (video_boundary_state == 3 && video_first_pixel_index < 4) begin
+            case (video_first_pixel_index)
+              1: expected_video_rgb = 24'h0000FF;
+              2: expected_video_rgb = 24'h00FF00;
+              default: expected_video_rgb = 24'hFFFFFF;
+            endcase
+            if (encoder_de_d3 !== 1'b1 || encoder_rgb_d3 !== expected_video_rgb) begin
+              video_first_pixel_error = 1;
+              $display("LINE_START_MISMATCH: pixel%0d de=%b expected=%06h actual=%06h",
+                       video_first_pixel_index,encoder_de_d3,expected_video_rgb,encoder_rgb_d3);
+            end
+            video_first_pixel_index = video_first_pixel_index + 1;
+            video_first_pixel_checks = video_first_pixel_checks + 1;
           end else if (video_boundary_state == 0) begin
             $fatal(1,"活动视频没有对应的视频前导/保护带");
           end
@@ -209,13 +321,13 @@ module tb_embedded_video_ip_7series_tx;
       measured_overflow=measured_overflow+1;
 
     // 活动视频中间区域的三个TMDS通道必须与Digilent R/B/G参考编码一致。
-    if (dut.de_pipe[10] && dut.u_hdmi_mode_mux.mode_pipe[2]==MODE_VIDEO) begin
+    if (encoder_de_d3 && dut.u_hdmi_mode_mux.mode_pipe[2]==MODE_VIDEO) begin
       if (dut.tmds_lane0!==ref_lane0 || dut.tmds_lane1!==ref_lane1 || dut.tmds_lane2!==ref_lane2)
         $fatal(1,"TX顶层RGB颜色通道或活动视频TMDS符号错误");
       color_checks=color_checks+1;
-      if (dut.rgb_pipe[10]===24'hFF0000) color_seen=color_seen|1;
-      if (dut.rgb_pipe[10]===24'h0000FF) color_seen=color_seen|2;
-      if (dut.rgb_pipe[10]===24'h00FF00) color_seen=color_seen|4;
+      if (encoder_rgb_d3===24'hFF0000) color_seen=color_seen|1;
+      if (encoder_rgb_d3===24'h0000FF) color_seen=color_seen|2;
+      if (encoder_rgb_d3===24'h00FF00) color_seen=color_seen|4;
     end
 
     if (aresetn && dut.tmds_serializer_aresetn && !$isunknown({tmds_tx_clk_p,tmds_tx_clk_n}) &&
@@ -251,6 +363,9 @@ module tb_embedded_video_ip_7series_tx;
     // 等待路由重新稳定，再测量完整一帧；帧含48条活动行和5条垂直消隐行。
     wait(frame_counter>=3);
     @(negedge pixel_clk);
+    bmp_rows_captured=0;
+    bmp_pixel_index=0;
+    bmp_capture_enable=1;
     frame_samples_out=0;
     measured_underflow=0;
     measured_overflow=0;
@@ -261,7 +376,14 @@ module tb_embedded_video_ip_7series_tx;
     wait(frame_counter>=4);
     @(negedge pixel_clk);
     measure_active=0;
+    bmp_capture_enable=0;
     frame_samples_in=accepted_samples_total-frame_samples_in_start;
+    if (bmp_rows_captured != V_ACTIVE_SIZE || bmp_pixel_index != H_ACTIVE_SIZE)
+      $fatal(1,"BMP帧捕获尺寸错误：rows=%0d last_row_pixels=%0d",
+             bmp_rows_captured,bmp_pixel_index);
+    write_line_start_bmp();
+    if (video_first_pixel_error != 0)
+      $fatal(1,"行首前4像素与视频DE对齐检查失败；查看 hdmi_tx_line_start.bmp");
 
     if (frame_samples_out<EXPECTED_SAMPLES-1 || frame_samples_out>EXPECTED_SAMPLES+1)
       $fatal(1,"完整帧音频输出样本数错误：actual=%0d expected=%0d",frame_samples_out,EXPECTED_SAMPLES);
@@ -275,9 +397,11 @@ module tb_embedded_video_ip_7series_tx;
       $fatal(1,"纯红/绿/蓝颜色向量未覆盖或通道编码未检查：mask=%0d",color_seen);
     if (video_boundaries_checked < 10)
       $fatal(1,"视频前导/保护带边界检查次数不足：%0d",video_boundaries_checked);
+    if (video_first_pixel_checks < 40)
+      $fatal(1,"活动视频行首像素检查次数不足：%0d",video_first_pixel_checks);
 
-    $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d video_boundaries=%0d",
-             frame_samples_in,frame_samples_out,vblank_packet_starts,video_boundaries_checked);
+    $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d video_boundaries=%0d first_pixels=%0d",
+             frame_samples_in,frame_samples_out,vblank_packet_starts,video_boundaries_checked,video_first_pixel_checks);
     $finish;
   end
 endmodule

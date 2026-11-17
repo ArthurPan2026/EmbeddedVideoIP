@@ -92,7 +92,7 @@ static int configure_vdma(void *context, uint64_t base, uint32_t width,
 
 int main(void)
 {
-    CHECK(strcmp(VIDEO_OUT_VERSION, "0.3.0-dev.1") == 0, "PS库版本不匹配");
+    CHECK(strcmp(VIDEO_OUT_VERSION, "0.3.0-dev.2") == 0, "PS库版本不匹配");
     FakeVideo fake;
     VideoOutIo io;
     VideoOutConfig cfg;

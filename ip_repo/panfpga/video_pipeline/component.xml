@@ -1286,7 +1286,7 @@
       </spirit:file>
     </spirit:fileSet>
   </spirit:fileSets>
-  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.3.0-dev.1.</spirit:description>
+  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.3.0-dev.2.</spirit:description>
   <spirit:parameters>
     <spirit:parameter>
       <spirit:name>MAX_INPUT_WIDTH</spirit:name>
@@ -1402,11 +1402,11 @@
       <xilinx:taxonomies>
         <xilinx:taxonomy>/Video</xilinx:taxonomy>
       </xilinx:taxonomies>
-      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.3.0-dev.1</xilinx:displayName>
+      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.3.0-dev.2</xilinx:displayName>
       <xilinx:definitionSource>package_project</xilinx:definitionSource>
       <xilinx:vendorDisplayName>Personal FPGA IP</xilinx:vendorDisplayName>
       <xilinx:coreRevision>1</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-11-17T07:41:18Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-11-17T12:50:08Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2.1</xilinx:xilinxVersion>

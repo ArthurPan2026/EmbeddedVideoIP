@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define VIDEO_OUT_VERSION "0.3.0-dev.1"
+#define VIDEO_OUT_VERSION "0.3.0-dev.2"
 
 #define VIDEO_OUT_OUTPUT_WIDTH 640U
 #define VIDEO_OUT_OUTPUT_HEIGHT 480U

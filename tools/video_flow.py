@@ -97,6 +97,7 @@ CATALOG_BD_REL = Path(
     "embedded_video_ip_catalog_validation/embedded_video_ip_catalog_validation.bd"
 )
 SIM_LOG_REL = Path("out/tests/video-tests.log")
+SIM_LINE_START_BMP_REL = Path("out/tests/tb_embedded_video_ip_7series_tx/hdmi_tx_line_start.bmp")
 SIM_TEST_LOG_RELS = (
     Path("out/tests/tb_axis_video_nn_scaler/run.log"),
     Path("out/tests/tb_axis_video_nn_scaler_bram/run.log"),
@@ -420,7 +421,8 @@ def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
     if name == "ip_catalog":
         return [root / CATALOG_BD_REL]
     if name == "sim":
-        return [root / SIM_LOG_REL, *(root / path for path in SIM_TEST_LOG_RELS)]
+        return [root / SIM_LOG_REL, *(root / path for path in SIM_TEST_LOG_RELS),
+                root / SIM_LINE_START_BMP_REL]
     if name == "synth":
         if not part:
             raise FlowError("Synthesis output validation requires a part.")

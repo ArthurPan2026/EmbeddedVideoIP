@@ -96,8 +96,10 @@ module tb_hdmi_pcm_packet_source;
       acr_count = acr_count + 1;
     end
     if (packet_valid && packet_ready && packet_header[7:0]==8'h82) begin
+      if (packet_sub0[14:13] !== 2'b00 || packet_sub0[12] !== 1'b1)
+        $fatal(1,"AVI PB1 must advertise RGB (Y=00, A0=1)");
       if (packet_header[15:8] !== 8'h02 || packet_header[23:16] !== 8'h0D ||
-          packet_sub0 !== 56'h0000010818202E ||
+          packet_sub0 !== 56'h0000010818103E ||
           {packet_sub3,packet_sub2,packet_sub1} !== 168'd0)
         $fatal(1,"AVI InfoFrame does not match the fixed VIC 1/full-range profile");
       avi_packet_count = avi_packet_count + 1;
@@ -105,7 +107,7 @@ module tb_hdmi_pcm_packet_source;
     if (static_disabled_valid && static_disabled_header[7:0] == 8'h82 &&
         (static_disabled_header[15:8] !== 8'h02 ||
          static_disabled_header[23:16] !== 8'h0D ||
-         static_disabled_sub0 !== 56'h0000010818202E ||
+         static_disabled_sub0 !== 56'h0000010818103E ||
          {static_disabled_sub3,static_disabled_sub2,static_disabled_sub1} !== 168'd0))
       $fatal(1,"audio-off profile must still send the AVI InfoFrame");
     if (packet_valid && packet_ready && packet_header[7:0]==8'h02) begin
