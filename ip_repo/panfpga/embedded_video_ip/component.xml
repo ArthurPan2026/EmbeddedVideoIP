@@ -426,7 +426,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>501e2200</spirit:value>
+            <spirit:value>bdd9c7f6</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -460,7 +460,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>bd0c8105</spirit:value>
+            <spirit:value>f4e9d6e5</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -1974,13 +1974,13 @@
       </xilinx:xpmLibraries>
       <xilinx:vendorDisplayName>Personal FPGA IP</xilinx:vendorDisplayName>
       <xilinx:coreRevision>2</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-11-17T12:50:34Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-11-17T13:28:06Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2.1</xilinx:xilinxVersion>
       <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="44ef7d6b"/>
       <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="6a6443ca"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="e8dbbc84"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="782617c9"/>
       <xilinx:checksum xilinx:scope="ports" xilinx:value="bfb8427f"/>
       <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="e50fee51"/>
       <xilinx:checksum xilinx:scope="parameters" xilinx:value="d3db1aa2"/>
