@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-// 把HDMI前导、保护带和数据岛符号插入Digilent视频编码输出。
+// 把HDMI前导、保护带和数据岛符号插入TMDS 视频编码输出。
 module hdmi_tmds_mode_mux #(
   parameter integer ENCODER_LATENCY = 3
 ) (

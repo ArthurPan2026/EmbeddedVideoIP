@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 module tb_embedded_video_ip_7series_tx;
-  localparam integer PIXEL_CLOCK_HZ=1000;
-  localparam integer AUDIO_SAMPLE_RATE_HZ=4;
+  localparam integer PIXEL_CLOCK_HZ=8_000_000;
+  localparam integer AUDIO_SAMPLE_RATE_HZ=48_000;
   localparam integer AUDIO_CLOCK_HZ=4*PIXEL_CLOCK_HZ;
   localparam integer H_TOTAL=180, H_ACTIVE_SIZE=80, H_SYNC_START=96;
   localparam integer HBLANK_PIXELS=H_TOTAL-H_ACTIVE_SIZE;
@@ -17,12 +17,20 @@ module tb_embedded_video_ip_7series_tx;
   integer frame_counter=0;
   logic [23:0] video_rgb;
   logic video_de, hsync, vsync;
-  logic [31:0] audio_pcm_tdata=0;
+  logic [47:0] audio_pcm_tdata=0;
+  logic [1:0] runtime_timing_profile=2'd0;
+  logic runtime_audio_tready, runtime_underflow_event, runtime_overflow_event;
+  logic runtime_tmds_clk_p,runtime_tmds_clk_n;
+  logic [2:0] runtime_tmds_data_p,runtime_tmds_data_n;
   logic audio_pcm_tvalid=0, audio_pcm_tready;
   logic hdmi_mode_request=1, hdmi_audio_enable=0, audio_mute=0;
   logic [16:0] audio_gain_q15=17'd32768;
   logic tmds_tx_clk_p,tmds_tx_clk_n;
   logic [2:0] tmds_tx_data_p,tmds_tx_data_n;
+  logic tmds_tx_clk_ycc_p,tmds_tx_clk_ycc_n;
+  logic [2:0] tmds_tx_data_ycc_p,tmds_tx_data_ycc_n;
+  logic ycc_audio_tready, ycc_underflow_event, ycc_overflow_event;
+  logic [23:0] ycc_reference_pixel;
   logic audio_underflow_event,audio_overflow_event;
   logic [31:0] audio_phase=0, audio_phase_sum;
   logic audio_sample_due;
@@ -36,7 +44,6 @@ module tb_embedded_video_ip_7series_tx;
   integer measured_underflow=0, measured_overflow=0;
   integer vblank_line_prepares=0, vblank_packet_starts=0;
   logic measure_active=0;
-  logic [9:0] ref_lane0,ref_lane1,ref_lane2;
   integer wait_cycles;
   integer audio_packet_starts_after_cancel=0;
   logic [9:0] expected_samples_word;
@@ -162,7 +169,7 @@ module tb_embedded_video_ip_7series_tx;
 
       if (audio_sample_due && (!audio_pcm_tvalid || audio_pcm_tready)) begin
         audio_pcm_tvalid<=1'b1;
-        audio_pcm_tdata<={16'h3456,16'(next_left_sample)};
+        audio_pcm_tdata<={24'h003456,24'(next_left_sample)};
         next_left_sample<=next_left_sample+1;
       end else if (audio_pcm_tvalid && audio_pcm_tready) begin
         audio_pcm_tvalid<=1'b0;
@@ -175,12 +182,12 @@ module tb_embedded_video_ip_7series_tx;
     .AUDIO_SAMPLE_RATE_HZ(AUDIO_SAMPLE_RATE_HZ),
     .H_ACTIVE_SIZE(H_ACTIVE_SIZE), .HBLANK_PIXELS(HBLANK_PIXELS),
     .H_TOTAL(H_TOTAL), .H_SYNC_START(H_SYNC_START), .HSYNC_ACTIVE_LEVEL(1'b1),
-    .ACR_N(512)
+    .ACR_N(6144)
   ) dut (
     .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
     .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
     .video_rgb(video_rgb), .video_de(video_de),
-    .hsync(hsync), .vsync(vsync), .audio_pcm_tdata(audio_pcm_tdata),
+    .hsync(hsync), .vsync(vsync), .mode_timing_profile(2'd0), .audio_pcm_tdata(audio_pcm_tdata),
     .audio_pcm_tvalid(audio_pcm_tvalid), .audio_pcm_tready(audio_pcm_tready),
     .hdmi_audio_enable(hdmi_audio_enable), .audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15), .tmds_tx_clk_p(tmds_tx_clk_p),
@@ -189,22 +196,107 @@ module tb_embedded_video_ip_7series_tx;
     .audio_overflow_event(audio_overflow_event)
   );
 
-  // 直接实例化Digilent编码器，作为R/B/G通道重排和视频符号的参考。
-  TMDS_Encoder ref_blue (
-    .PixelClk(pixel_clk), .SerialClk(serial_clk), .aRst(~dut.pixel_aresetn),
-    .pDataOutRaw(ref_lane0), .pDataOut(dut.rgb_pipe[10][15:8]),
-    .pC0(dut.hsync_pipe[10]), .pC1(dut.vsync_pipe[10]), .pVde(dut.de_pipe[10])
+  // Run a second, audio-disabled TX in YCbCr 4:4:4 mode beside the RGB8
+  // compatibility instance. This checks the real TX parameter/mux boundary
+  // without changing the public top or the existing audio test setup.
+  embedded_video_ip_7series_tx #(
+    .ENABLE_HDMI_AUDIO(1'b0), .PIXEL_CLOCK_HZ(PIXEL_CLOCK_HZ),
+    .AUDIO_SAMPLE_RATE_HZ(AUDIO_SAMPLE_RATE_HZ),
+    .H_ACTIVE_SIZE(H_ACTIVE_SIZE), .HBLANK_PIXELS(HBLANK_PIXELS),
+    .H_TOTAL(H_TOTAL), .H_SYNC_START(H_SYNC_START), .HSYNC_ACTIVE_LEVEL(1'b1),
+    .ACR_N(6144), .OUTPUT_COLOR_MODE(1), .COLORIMETRY(1), .YCC_RANGE(0),
+    .OUTPUT_COLOR_DEPTH(8)
+  ) dut_ycbcr (
+    .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
+    .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
+    .video_rgb(video_rgb), .video_de(video_de), .hsync(hsync), .vsync(vsync),
+    .mode_timing_profile(2'd0), .audio_pcm_tdata(48'd0), .audio_pcm_tvalid(1'b0), .audio_pcm_tready(ycc_audio_tready),
+    .hdmi_audio_enable(1'b0), .audio_mute(1'b0), .audio_gain_q15(17'd32768),
+    .tmds_tx_clk_p(tmds_tx_clk_ycc_p), .tmds_tx_clk_n(tmds_tx_clk_ycc_n),
+    .tmds_tx_data_p(tmds_tx_data_ycc_p), .tmds_tx_data_n(tmds_tx_data_ycc_n),
+    .audio_underflow_event(ycc_underflow_event), .audio_overflow_event(ycc_overflow_event)
   );
-  TMDS_Encoder ref_green (
-    .PixelClk(pixel_clk), .SerialClk(serial_clk), .aRst(~dut.pixel_aresetn),
-    .pDataOutRaw(ref_lane1), .pDataOut(dut.rgb_pipe[10][7:0]),
-    .pC0(1'b0), .pC1(1'b0), .pVde(dut.de_pipe[10])
+
+  // Runtime timing profile path: exercise the active VIC/clock/line geometry
+  // decode while the physical simulator clocks remain free-running.
+  embedded_video_ip_7series_tx #(
+    .ENABLE_HDMI_AUDIO(1'b1), .PIXEL_CLOCK_HZ(PIXEL_CLOCK_HZ),
+    .AUDIO_SAMPLE_RATE_HZ(48_000), .H_ACTIVE_SIZE(H_ACTIVE_SIZE),
+    .HBLANK_PIXELS(HBLANK_PIXELS), .H_TOTAL(H_TOTAL), .H_SYNC_START(H_SYNC_START),
+    .HSYNC_ACTIVE_LEVEL(1'b1), .USE_RUNTIME_VIDEO_PROFILE(1),
+    .OUTPUT_COLOR_MODE(0), .OUTPUT_COLOR_DEPTH(8)
+  ) dut_runtime_profile (
+    .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
+    .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
+    .video_rgb(video_rgb), .video_de(video_de), .hsync(hsync), .vsync(vsync),
+    .mode_timing_profile(runtime_timing_profile), .audio_pcm_tdata(48'd0),
+    .audio_pcm_tvalid(1'b0), .audio_pcm_tready(runtime_audio_tready),
+    .hdmi_audio_enable(1'b0), .audio_mute(1'b0), .audio_gain_q15(17'd32768),
+    .tmds_tx_clk_p(runtime_tmds_clk_p), .tmds_tx_clk_n(runtime_tmds_clk_n),
+    .tmds_tx_data_p(runtime_tmds_data_p), .tmds_tx_data_n(runtime_tmds_data_n),
+    .audio_underflow_event(runtime_underflow_event), .audio_overflow_event(runtime_overflow_event)
   );
-  TMDS_Encoder ref_red (
-    .PixelClk(pixel_clk), .SerialClk(serial_clk), .aRst(~dut.pixel_aresetn),
-    .pDataOutRaw(ref_lane2), .pDataOut(dut.rgb_pipe[10][23:16]),
-    .pC0(1'b0), .pC1(1'b0), .pVde(dut.de_pipe[10])
+
+  function automatic logic [19:0] expected_runtime_cts(input logic [31:0] pclk);
+    logic [63:0] numerator;
+    begin
+      numerator=64'(pclk)*64'd6144+64'd3_072_000;
+      expected_runtime_cts=20'(numerator/64'd6_144_000);
+    end
+  endfunction
+
+  task automatic check_runtime_profile(input logic [1:0] profile,
+      input logic [31:0] pclk, input logic [31:0] htotal,
+      input logic [31:0] active_width, input logic [31:0] hsync_start,
+      input logic [7:0] vic, input logic [7:0] pb2);
+    logic [19:0] cts;
+    logic [55:0] acr_payload;
+    logic [55:0] avi_payload;
+    begin
+      runtime_timing_profile=profile;
+      repeat(5) @(posedge pixel_clk);
+      #1;
+      if (!dut_runtime_profile.active_profile_valid ||
+          dut_runtime_profile.active_pixel_clock_hz!==pclk ||
+          dut_runtime_profile.active_h_total!==htotal ||
+          dut_runtime_profile.active_h_active_size!==active_width ||
+          dut_runtime_profile.active_h_sync_start!==hsync_start ||
+          dut_runtime_profile.active_video_vic!==vic)
+        $fatal(1,"runtime TX profile decode mismatch: id=%0d pclk=%0d htotal=%0d active=%0d VIC=%0d",
+               profile,dut_runtime_profile.active_pixel_clock_hz,dut_runtime_profile.active_h_total,
+               dut_runtime_profile.active_h_active_size,dut_runtime_profile.active_video_vic);
+      cts=expected_runtime_cts(pclk);
+      acr_payload=dut_runtime_profile.u_audio_packet_source.g_hdmi_audio_enabled.acr_sub[0];
+      if (acr_payload[7:0]!==8'h00 || acr_payload[15:8]!=={4'b0000,cts[19:16]} ||
+          acr_payload[23:16]!==cts[15:8] || acr_payload[31:24]!==cts[7:0] ||
+          acr_payload[39:32]!==8'h00 || acr_payload[47:40]!==8'h18 || acr_payload[55:48]!==8'h00)
+        $fatal(1,"runtime ACR N/CTS mismatch for VIC %0d: pclk=%0d CTS=%h payload=%h",vic,pclk,cts,acr_payload);
+      avi_payload=dut_runtime_profile.color_avi_subpacket[0];
+      if (avi_payload[39:32]!==vic || avi_payload[23:16]!==pb2)
+        $fatal(1,"runtime AVI VIC/aspect mismatch: VIC=%0d PB2=%h PB4=%h",vic,avi_payload[23:16],avi_payload[39:32]);
+      if (dut_runtime_profile.u_line_slot_scheduler.h_total!==htotal ||
+          dut_runtime_profile.u_line_slot_scheduler.h_active_size!==active_width ||
+          dut_runtime_profile.u_line_slot_scheduler.h_sync_start!==hsync_start)
+        $fatal(1,"line-slot scheduler did not take the active timing profile");
+    end
+  endtask
+
+  hdmi_rgb_to_ycbcr444 #(.COLORIMETRY(1), .YCC_RANGE(0)) u_ycbcr_reference (
+    .rgb_rbg(dut_ycbcr.rgb_pipe[10]), .ycbcr_rbg(ycc_reference_pixel)
   );
+
+  always @(posedge pixel_clk) begin
+    #1;
+    if (aresetn && dut_ycbcr.pixel_aresetn &&
+        dut_ycbcr.encoder_pixel_rbg !== ycc_reference_pixel)
+      $fatal(1, "TX YCbCr 4:4:4 color select/mux mismatch");
+    if (aresetn && dut_ycbcr.tmds_serializer_aresetn && !$isunknown(
+        {tmds_tx_clk_ycc_p,tmds_tx_clk_ycc_n,tmds_tx_data_ycc_p,tmds_tx_data_ycc_n})) begin
+      if ((tmds_tx_clk_ycc_p === tmds_tx_clk_ycc_n) ||
+          ((tmds_tx_data_ycc_p ^ tmds_tx_data_ycc_n) !== 3'b111))
+        $fatal(1, "YCbCr TX differential outputs are not complementary");
+    end
+  end
 
   always @(posedge audio_pcm_clk) begin
     if (aresetn && audio_pcm_tvalid && audio_pcm_tready)
@@ -214,9 +306,9 @@ module tb_embedded_video_ip_7series_tx;
   end
 
   always @(posedge pixel_clk) begin
-    // Track the RGB/DE values sampled by TMDS Encoder Stage 1. The 3-stage
-    // mode pipe and Digilent's 3 registered encoder stages are observed after
-    // the same edge; this history aligns the displayed symbol with its pixel.
+    // Track the RGB/DE values at the SV encoder input. The three-cycle
+    // mode pipe and two-cycle encoder pipeline are observed after the same
+    // edge; this history aligns the displayed symbol with its source pixel.
     encoder_rgb_d1 <= dut.rgb_pipe[10];
     encoder_rgb_d2 <= encoder_rgb_d1;
     encoder_rgb_d3 <= encoder_rgb_d2;
@@ -323,10 +415,12 @@ module tb_embedded_video_ip_7series_tx;
     if (measure_active && audio_overflow_event)
       measured_overflow=measured_overflow+1;
 
-    // 活动视频中间区域的三个TMDS通道必须与Digilent R/B/G参考编码一致。
+    // The default TX profile remains RGB8 and keeps the existing RBG bytes.
     if (encoder_de_d3 && dut.u_hdmi_mode_mux.mode_pipe[2]==MODE_VIDEO) begin
-      if (dut.tmds_lane0!==ref_lane0 || dut.tmds_lane1!==ref_lane1 || dut.tmds_lane2!==ref_lane2)
-        $fatal(1,"TX顶层RGB颜色通道或活动视频TMDS符号错误");
+      if (dut.encoder_pixel_rbg !== dut.rgb_pipe[10])
+        $fatal(1,"RGB8 compatibility path changed packed pixel bytes");
+      if ($isunknown({dut.tmds_lane0,dut.tmds_lane1,dut.tmds_lane2}))
+        $fatal(1,"SV TMDS symbols became unknown during active video");
       color_checks=color_checks+1;
       if (encoder_rgb_d3===24'hFF0000) color_seen=color_seen|1;
       if (encoder_rgb_d3===24'h0000FF) color_seen=color_seen|2;
@@ -344,6 +438,13 @@ module tb_embedded_video_ip_7series_tx;
   initial begin
     repeat(6) @(posedge pixel_clk);
     @(negedge pixel_clk); aresetn=1; hdmi_audio_enable=1;
+    #1;
+    if ((dut_ycbcr.color_avi_header !== 24'h0D0282) ||
+        (dut_ycbcr.color_avi_subpacket[0][15:8] !== 8'h50) ||
+        (dut_ycbcr.color_avi_subpacket[0][23:16] !== 8'h98) ||
+        (dut_ycbcr.color_avi_subpacket[0][31:24] !== 8'h00) ||
+        (dut_ycbcr.color_avi_subpacket[0][47:40] !== 8'h00))
+      $fatal(1, "TX YCbCr AVI InfoFrame does not advertise BT.709 limited-range 4:4:4");
 
     // 等待一个尚未启动的数据包，切路由前验证它会被安全取消。
     wait_cycles=0;
@@ -403,6 +504,9 @@ module tb_embedded_video_ip_7series_tx;
     if (video_first_pixel_checks < 40)
       $fatal(1,"活动视频行首像素检查次数不足：%0d",video_first_pixel_checks);
 
+    check_runtime_profile(2'd0,32'd25_178_571,32'd800,32'd640,32'd656,8'd1,8'h18);
+    check_runtime_profile(2'd1,32'd74_218_750,32'd1650,32'd1280,32'd1390,8'd4,8'h28);
+    check_runtime_profile(2'd2,32'd74_218_750,32'd2200,32'd1920,32'd2008,8'd34,8'h28);
     $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d video_boundaries=%0d first_pixels=%0d",
              frame_samples_in,frame_samples_out,vblank_packet_starts,video_boundaries_checked,video_first_pixel_checks);
     $finish;

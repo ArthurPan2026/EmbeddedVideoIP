@@ -1,7 +1,8 @@
 `timescale 1ns/1ps
 module axi_lite_video_regs #(
   parameter int unsigned ADDR_WIDTH = 6,
-  parameter int unsigned ENABLE_HDMI_AUDIO = 0
+  parameter int unsigned ENABLE_HDMI_AUDIO = 0,
+  parameter int unsigned ENABLE_OUTPUT_MODE = 0
 ) (
   input logic aclk, input logic aresetn,
   input logic [ADDR_WIDTH-1:0] s_axi_awaddr,
@@ -23,16 +24,16 @@ module axi_lite_video_regs #(
   output logic [15:0] cfg_height,
   output logic [31:0] cfg_stride_bytes,
   output logic [31:0] cfg_bram_base_word,
-  output logic [9:0] cfg_active_width,
-  output logic [9:0] cfg_active_height,
-  output logic [9:0] cfg_x_offset,
-  output logic [9:0] cfg_y_offset,
-  output logic [9:0] cfg_source_x_origin,
-  output logic [9:0] cfg_source_y_origin,
-  output logic [9:0] cfg_x_step,
-  output logic [9:0] cfg_x_rem,
-  output logic [9:0] cfg_y_step,
-  output logic [9:0] cfg_y_rem,
+  output logic [10:0] cfg_active_width,
+  output logic [10:0] cfg_active_height,
+  output logic [10:0] cfg_x_offset,
+  output logic [10:0] cfg_y_offset,
+  output logic [10:0] cfg_source_x_origin,
+  output logic [10:0] cfg_source_y_origin,
+  output logic [10:0] cfg_x_step,
+  output logic [10:0] cfg_x_rem,
+  output logic [10:0] cfg_y_step,
+  output logic [10:0] cfg_y_rem,
   output logic cfg_commit,
   output logic bram_start,
   output logic clear_errors,
@@ -43,7 +44,7 @@ module axi_lite_video_regs #(
   input logic active_enable,
   input logic busy, input logic bram_busy,
   input logic [1:0] active_source,
-  input logic [9:0] active_width, input logic [9:0] active_height,
+  input logic [10:0] active_width, input logic [10:0] active_height,
   input logic [31:0] frame_count,
   input logic [31:0] error_flags,
   output logic hdmi_audio_enable,
@@ -52,7 +53,13 @@ module axi_lite_video_regs #(
   input logic audio_underflow,
   input logic audio_overflow,
   input logic [5:0] hdmi_diag_status,
-  output logic hdmi_link_mode
+  output logic hdmi_link_mode,
+  output logic [1:0] video_mode_request,
+  output logic video_mode_commit,
+  output logic video_mode_error_clear,
+  input logic [1:0] video_mode_active,
+  input logic video_mode_busy,
+  input logic video_mode_error
 );
   localparam logic [ADDR_WIDTH-1:0] REG_CTRL = 'h00;
   localparam logic [ADDR_WIDTH-1:0] REG_SIZE = 'h04;
@@ -124,18 +131,20 @@ module axi_lite_video_regs #(
     cfg_height = size_reg[31:16];
     cfg_stride_bytes = stride_reg;
     cfg_bram_base_word = bram_base_reg;
-    cfg_active_width = active_cfg_reg[9:0];
-    cfg_active_height = active_cfg_reg[25:16];
-    cfg_x_offset = offsets_reg[9:0];
-    cfg_y_offset = offsets_reg[25:16];
-    cfg_source_x_origin = origin_reg[9:0];
-    cfg_source_y_origin = origin_reg[25:16];
-    cfg_x_step = x_ratio_reg[9:0];
-    cfg_x_rem = x_ratio_reg[25:16];
-    cfg_y_step = y_ratio_reg[9:0];
-    cfg_y_rem = y_ratio_reg[25:16];
+    cfg_active_width = active_cfg_reg[10:0];
+    cfg_active_height = active_cfg_reg[26:16];
+    cfg_x_offset = offsets_reg[10:0];
+    cfg_y_offset = offsets_reg[26:16];
+    cfg_source_x_origin = origin_reg[10:0];
+    cfg_source_y_origin = origin_reg[26:16];
+    cfg_x_step = x_ratio_reg[10:0];
+    cfg_x_rem = x_ratio_reg[26:16];
+    cfg_y_step = y_ratio_reg[10:0];
+    cfg_y_rem = y_ratio_reg[26:16];
     // CTRL[13] selects HDMI packet framing; reset/default 0 is DVI-safe.
     hdmi_link_mode = ctrl_reg[13];
+    video_mode_request = (ENABLE_OUTPUT_MODE != 0) ? ctrl_reg[15:14] : 2'b00;
+    video_mode_error_clear = (ENABLE_OUTPUT_MODE != 0) ? clear_errors : 1'b0;
     // Export the raw request; the HDMI transmitter combines it with its
     // synchronized link-active state inside each destination clock domain.
     hdmi_audio_enable = (ENABLE_HDMI_AUDIO != 0) && audio_ctrl_reg[0];
@@ -147,7 +156,11 @@ module axi_lite_video_regs #(
       REG_SIZE: read_value = size_reg;
       REG_STRIDE: read_value = stride_reg;
       REG_BRAM_BASE: read_value = bram_base_reg;
-      REG_STATUS: read_value = {18'd0, hdmi_diag_status,
+      REG_STATUS: read_value = {
+                                ((ENABLE_OUTPUT_MODE != 0) ? video_mode_error : 1'b0),
+                                ((ENABLE_OUTPUT_MODE != 0) ? video_mode_busy : 1'b0),
+                                ((ENABLE_OUTPUT_MODE != 0) ? video_mode_active : 2'b00),
+                                14'd0, hdmi_diag_status,
                                 active_source, bram_busy, busy,
                                 1'b0, cfg_pending, stream_hold, active_enable};
       REG_FRAME_COUNT: read_value = frame_count;
@@ -157,7 +170,7 @@ module axi_lite_video_regs #(
       REG_ORIGIN: read_value = origin_reg;
       REG_X_RATIO: read_value = x_ratio_reg;
       REG_Y_RATIO: read_value = y_ratio_reg;
-      REG_ACTIVE_SIZE: read_value = {6'd0, active_height, 6'd0, active_width};
+      REG_ACTIVE_SIZE: read_value = {5'd0, active_height, 5'd0, active_width};
       REG_AUDIO_CTRL: read_value = audio_ctrl_reg;
       REG_AUDIO_GAIN_Q15: read_value = {15'd0, audio_gain_reg};
       REG_AUDIO_STATUS: read_value = {29'd0, audio_overflow_sticky, audio_underflow_sticky,
@@ -172,8 +185,8 @@ module axi_lite_video_regs #(
       size_reg <= {16'd240,16'd320};
       stride_reg <= 32'd640;
       bram_base_reg <= 32'd0;
-      active_cfg_reg <= {6'd0,10'd240,6'd0,10'd320};
-      offsets_reg <= {6'd0,10'd120,6'd0,10'd160};
+      active_cfg_reg <= {5'd0,11'd240,5'd0,11'd320};
+      offsets_reg <= {5'd0,11'd120,5'd0,11'd160};
       origin_reg <= 32'd0;
       x_ratio_reg <= 32'd1;
       y_ratio_reg <= 32'd1;
@@ -185,13 +198,14 @@ module axi_lite_video_regs #(
       awaddr_saved <= '0; wdata_saved <= '0; wstrb_saved <= '0;
       s_axi_bvalid <= 1'b0; s_axi_rvalid <= 1'b0; s_axi_rdata <= 32'd0;
       cfg_commit <= 1'b0; bram_start <= 1'b0; clear_errors <= 1'b0;
-      abort_stream <= 1'b0; resume_stream <= 1'b0;
+      abort_stream <= 1'b0; resume_stream <= 1'b0; video_mode_commit <= 1'b0;
     end else begin
       cfg_commit <= 1'b0;
       bram_start <= 1'b0;
       clear_errors <= 1'b0;
       abort_stream <= 1'b0;
       resume_stream <= 1'b0;
+      video_mode_commit <= 1'b0;
 
       if (clear_errors) begin
         audio_underflow_sticky <= 1'b0;
@@ -212,8 +226,21 @@ module axi_lite_video_regs #(
         case (write_addr)
           REG_CTRL: begin
             logic [31:0] merged;
+            logic [2:0] mode_and_link;
+            logic mode_commit_write;
             merged = merge_strb(ctrl_reg, write_data, write_strb);
-            ctrl_reg <= {merged[31:13], 5'b00000, merged[7:0]};
+            mode_commit_write = (ENABLE_OUTPUT_MODE != 0) &&
+                                write_strb[2] && write_data[16] &&
+                                write_strb[1] && write_data[8];
+            if (ENABLE_OUTPUT_MODE != 0)
+              mode_and_link = mode_commit_write ? merged[15:13] :
+                                                   {ctrl_reg[15:14], merged[13]};
+            else
+              mode_and_link = {2'b00, merged[13]};
+            ctrl_reg <= {merged[31:17], 1'b0, mode_and_link,
+                         5'b00000, merged[7:0]};
+            if (mode_commit_write)
+              video_mode_commit <= 1'b1;
             if (write_strb[1] && write_data[8]) cfg_commit <= 1'b1;
             if (write_strb[1] && write_data[9]) bram_start <= 1'b1;
             if (write_strb[1] && write_data[10]) clear_errors <= 1'b1;

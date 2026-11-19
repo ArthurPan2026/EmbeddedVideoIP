@@ -35,7 +35,7 @@ module tb_hdmi_packet_assembler;
   );
 
   hdmi_avi_infoframe u_static_avi (
-    .header(static_header), .subpacket(static_sub)
+    .video_vic(8'd1), .header(static_header), .subpacket(static_sub)
   );
   hdmi_bch_ecc #(.DATA_WIDTH(24)) ref_static_header (
     .data_in(static_header), .ecc_out(static_header_ecc)

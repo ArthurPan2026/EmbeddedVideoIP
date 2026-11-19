@@ -182,14 +182,17 @@ int VideoOut_Configure(const VideoOutIo *io, const VideoOutConfig *config,
 
     active_cfg = ((uint32_t)geometry.active_height << 16) | geometry.active_width;
     offsets = ((uint32_t)geometry.y_offset << 16) | geometry.x_offset;
-    origin = ((uint32_t)geometry.source_y_origin << 16) | geometry.source_x_origin;
+    origin = (((uint32_t)geometry.source_y_origin & 0x7ffU) << 16) |
+             ((uint32_t)geometry.source_x_origin & 0x7ffU);
     io->write_reg(io->context, REG_ACTIVE_CFG, active_cfg);
     io->write_reg(io->context, REG_OFFSETS, offsets);
     io->write_reg(io->context, REG_SOURCE_ORIGIN, origin);
     io->write_reg(io->context, REG_X_RATIO,
-                  ((uint32_t)geometry.x_rem << 16) | geometry.x_step);
+                  (((uint32_t)geometry.x_rem & 0x7ffU) << 16) |
+                  ((uint32_t)geometry.x_step & 0x7ffU));
     io->write_reg(io->context, REG_Y_RATIO,
-                  ((uint32_t)geometry.y_rem << 16) | geometry.y_step);
+                  (((uint32_t)geometry.y_rem & 0x7ffU) << 16) |
+                  ((uint32_t)geometry.y_step & 0x7ffU));
 
     // Keep the link protocol selected by the consumer's HPD/EDID service.
     control = io->read_reg(io->context, REG_CTRL) & CTRL_HDMI_LINK_MODE;
@@ -297,8 +300,8 @@ int VideoOut_GetStatus(const VideoOutIo *io, VideoOutStatus *status)
     status->stream_held = (uint8_t)((state & VIDEO_OUT_STATUS_STREAM_HELD) != 0U);
     status->config_pending = (uint8_t)((state & VIDEO_OUT_STATUS_CONFIG_PENDING) != 0U);
     status->active_source = (state >> 6) & 3U;
-    status->active_width = active_size & 0x3ffU;
-    status->active_height = (active_size >> 16) & 0x3ffU;
+    status->active_width = active_size & 0x7ffU;
+    status->active_height = (active_size >> 16) & 0x7ffU;
     status->frame_count = io->read_reg(io->context, REG_FRAME_COUNT);
     status->error_flags = io->read_reg(io->context, REG_ERRORS);
     status->hdmi_pixel_reset_released = (uint8_t)((state >> 8) & 1U);

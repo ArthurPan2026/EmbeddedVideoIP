@@ -252,7 +252,9 @@ class CompositeResetPolarityTests(unittest.TestCase):
         self.assertIn("CONFIG.C_AUX_RESET_HIGH {1}", script)
         self.assertIn("CONFIG.C_EXT_RESET_HIGH {1}", script)
         self.assertIn("connect_bd_net [get_bd_pins $zero/dout] [get_bd_pins $rst/aux_reset_in]", script)
-        self.assertIn("[get_bd_pins $inv/Res] $pixel_reset_ext_port [get_bd_pins $rst/ext_reset_in]", script)
+        self.assertIn("CONFIG.C_OPERATION {or}", script)
+        self.assertIn("$pixel_reset_hold_port [get_bd_pins $reset_or/Op2]", script)
+        self.assertIn("[get_bd_pins $reset_or/Res] $pixel_reset_ext_port [get_bd_pins $rst/ext_reset_in]", script)
 
 
 class VideoFlowInputPartitionTests(unittest.TestCase):
@@ -295,12 +297,12 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_tmds_symbol_encoder.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv",
-            "third_party/digilent-rgb2dvi/NOTICE.md",
-            "third_party/digilent-rgb2dvi/OutputSERDES.vhd",
-            "third_party/digilent-rgb2dvi/DVI_Constants.vhd",
-            "third_party/digilent-rgb2dvi/TMDS_Encoder.vhd",
+            "ip/video_pipeline_1_0/hdl/hdmi_mode_transition_ctrl.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_video_timing_gen.sv",
+            "ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv",
+            "ip_repo/if/tmds_v1_0/tmds.xml",
+            "ip_repo/if/tmds_v1_0/tmds_rtl.xml",
             "dependencies.lock.json",
-            "NOTICE.md",
             "software/video_out.c",
             "software/video_out.h",
             "software/platforms/xilinx_zynq7000/video_out_xilinx.c",
@@ -308,8 +310,11 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "software/unrelated_ps.c",
             "VERSION",
             "tests/rtl/tb_axis_video_nn_scaler.sv",
+            "tests/rtl/tb_axis_video_nn_scaler_output_dims.sv",
+            "tests/rtl/tb_axis_video_nn_scaler_native_input.sv",
             "tests/rtl/tb_video_bram_rgb565_reader.sv",
             "tests/rtl/tb_video_pipeline_v1_0.sv",
+            "tests/rtl/tb_video_pipeline_output_mode.sv",
             "tests/rtl/tb_video_pipeline_static_profile.sv",
             "tests/rtl/tb_hdmi_runtime_status.sv",
             "tests/rtl/tb_hdmi_gain_bus_cdc.sv",
@@ -319,8 +324,14 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "tests/rtl/tb_hdmi_packet_assembler.sv",
             "tests/rtl/tb_hdmi_line_slot_scheduler.sv",
             "tests/rtl/tb_hdmi_tmds_mode_mux.sv",
-            "tests/rtl/tb_hdmi_digilent_video_encoder.sv",
+            "tests/rtl/tb_hdmi_video_encoder.sv",
+            "tests/rtl/tb_hdmi_color_avi_infoframe.sv",
+            "tests/rtl/tb_hdmi_7series_output_serdes.sv",
+            "tests/rtl/tb_hdmi_mode_transition_ctrl.sv",
+            "tests/rtl/tb_hdmi_video_timing_gen.sv",
+            "tests/rtl/tb_hdmi_clock_profile_mux.sv",
             "tests/rtl/tb_hdmi_pcm_packet_source.sv",
+            "tests/rtl/tb_hdmi_pcm_profile_rates.sv",
             "tests/rtl/tb_embedded_video_ip_7series_tx.sv",
             "tests/host/test_video_out.c",
             "tests/host/test_install_ps_library.py",
@@ -371,8 +382,10 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("tools/package_composite_ip.tcl", package)
             self.assertIn("tools/package_all.tcl", package)
             self.assertIn("dependencies.lock.json", package)
-            self.assertIn("NOTICE.md", package)
-            self.assertIn("third_party/digilent-rgb2dvi/OutputSERDES.vhd", package)
+            self.assertIn("ip_repo/if/tmds_v1_0/tmds.xml", package)
+            self.assertIn("ip_repo/if/tmds_v1_0/tmds_rtl.xml", package)
+            self.assertFalse(any(path.endswith((".vhd", ".vhdl")) for path in package))
+            self.assertFalse(any(path.startswith("third_party/") for path in package))
             self.assertIn("ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v", package)
             self.assertNotIn("docs/architecture.md", package)
             self.assertNotIn("software/video_out.c", package)
@@ -380,12 +393,33 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", sim)
             self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_gain_bus_cdc.sv", sim)
             self.assertIn("tests/rtl/tb_hdmi_gain_bus_cdc.sv", sim)
+            self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv", sim)
+            self.assertIn("ip/video_pipeline_1_0/hdl/hdmi_mode_transition_ctrl.sv", sim)
+            self.assertIn("tests/rtl/tb_hdmi_clock_profile_mux.sv", sim)
+            self.assertIn("tests/rtl/tb_hdmi_color_avi_infoframe.sv", sim)
+            self.assertIn("tests/rtl/tb_hdmi_7series_output_serdes.sv", sim)
+            self.assertIn("tests/rtl/tb_hdmi_pcm_profile_rates.sv", sim)
+            self.assertFalse(any(path.endswith((".vhd", ".vhdl")) for path in sim))
+            self.assertFalse(any(path.startswith("third_party/") for path in sim))
             self.assertIn("software/video_out.c", sim)
             self.assertIn("software/platforms/xilinx_zynq7000/video_out_xilinx.c", sim)
             self.assertIn("VERSION", sim)
             self.assertNotIn("software/unrelated_ps.c", sim)
             self.assertIn("tools/run_video_tests.sh", sim)
             self.assertNotIn("docs/architecture.md", sim)
+            runner = (video_flow.ROOT / "tools/run_video_tests.sh").read_text(encoding="utf-8")
+            for bench in (
+                "tb_hdmi_clock_profile_mux",
+                "tb_hdmi_mode_transition_ctrl",
+                "tb_hdmi_video_timing_gen",
+                "tb_axis_video_nn_scaler_output_dims",
+                "tb_video_pipeline_output_mode",
+                "tb_hdmi_color_avi_infoframe",
+                "tb_hdmi_7series_output_serdes",
+                "tb_hdmi_pcm_profile_rates",
+            ):
+                self.assertIn(f"run_xsim {bench}", runner)
+            self.assertNotIn("xvhdl", runner)
 
             packaged_root = root / "ip_repo/panfpga/video_pipeline"
             composite_root = root / "ip_repo/panfpga/embedded_video_ip"

@@ -7,7 +7,7 @@
 项目与配套 PS 库版本取自 VERSION 文件，当前为 0.3.0-dev.2。外部 EmbeddedVideoIP VLNV 保持 panfpga.org:video:embedded_video_ip:1.0。
 
 - 当前 Zybo Z7-20 profile 固定 Vivado/Vitis 2025.2.1。
-- Digilent `TMDS_Encoder`、`DVI_Constants` 和 `OutputSERDES` 源码的来源提交与哈希固定在 `dependencies.lock.json`。
+- HDMI TX 的编码器、串行器和 TMDS 接口定义由本项目维护。Vivado packaging 使用 canonical SystemVerilog 和 ip_repo/if 中的接口文件。
 - `video_flow.py` 使用 Python 3；XSim/C 回归需要 Vivado、GCC 和 Python unittest。
 
 ## 分阶段命令
@@ -52,10 +52,14 @@ python3 tools/video_flow.py build --part xc7z020clg400-1 --profile vdma_scaler_b
 
 - `ip/video_pipeline_1_0/hdl/`：唯一 canonical RTL 源码。
 - `tools/package_ip.tcl`：生成内部视频处理核。
-- `tools/package_composite_ip.tcl`：在一个 RTL 顶层 IP 中组合内部视频核、固定视频输出 BD、时钟与 7-series HDMI TX。
+- `tools/package_composite_ip.tcl`：在一个 RTL 顶层 IP 中组合内部视频核、视频输出 BD、时钟与 7-series HDMI TX。
 - `ip_repo/`：Vivado IP Catalog 生成包，只由 packaging stage 写入。
 - `software/`：平台无关 PS C API。
 - `software/platforms/xilinx_zynq7000/`：Zynq-7000 VDMA/MMIO adapter；HDMI 音频控制 API 复用同一个 AXI-Lite 接口。
 - `platforms/amd_7series/`：Zybo Z7-20 时钟、I/O 和支持矩阵。
 
 消费者只实例化一个 EmbeddedVideoIP 顶层。PS/CIPS 和 DDR memory controller 仍属于消费系统；消费工程连接 VDMA/HLS/BRAM 源、PCM AXI-Stream、单一 AXI-Lite 控制口和 TMDS 引脚。HPD/DDC 由消费系统单独接到 PS GPIO/IIC。
+
+## GBA 输入分辨率
+
+GBA 的 CMake 选项 PS_APP_NATIVE_720P_INPUT 默认开启。它配置 1280×720 XRGB8888 LVGL/VDMA 输入，并预留 4 MiB 帧槽。关闭该选项后，输入回到 640×480。

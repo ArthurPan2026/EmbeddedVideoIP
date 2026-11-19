@@ -4,19 +4,48 @@
   "part": "xc7z020clg400-1",
   "vivado": "2025.2.1",
   "video_output": {
-    "mode": "640x480p60",
-    "pixel_clock_mhz": 25.175,
-    "serial_clock_mhz": 125.875,
+    "boot_mode": "VIC1 640x480p60",
+    "supported_modes": [
+      {
+        "vic": 1,
+        "name": "640x480p60",
+        "active": [
+          640,
+          480
+        ],
+        "pixel_clock_nominal_mhz": 25.175,
+        "pixel_clock_actual_mhz": 25.178571,
+        "serial_clock_actual_mhz": 125.892857
+      },
+      {
+        "vic": 4,
+        "name": "720p60",
+        "active": [
+          1280,
+          720
+        ],
+        "pixel_clock_nominal_mhz": 74.25,
+        "pixel_clock_actual_mhz": 74.21875,
+        "serial_clock_actual_mhz": 371.09375
+      },
+      {
+        "vic": 34,
+        "name": "1080p30",
+        "active": [
+          1920,
+          1080
+        ],
+        "pixel_clock_nominal_mhz": 74.25,
+        "pixel_clock_actual_mhz": 74.21875,
+        "serial_clock_actual_mhz": 371.09375
+      }
+    ],
     "reference_clock_mhz": 50.0,
-    "pixel_clock_nominal_mhz": 25.175,
-    "serial_clock_nominal_mhz": 125.875,
-    "pixel_clock_actual_mhz": 25.178571,
-    "serial_clock_actual_mhz": 125.892857,
-    "pixel_clock_hz": 25178571,
-    "serial_clock_hz": 125892857,
     "audio_sample_rate_hz": 48000,
+    "audio_sample_bits": 24,
     "transmitter_hdl_module": "embedded_video_ip_7series_tx",
-    "third_party_tmds_source": "Digilent TMDS_Encoder / OutputSERDES / DVI_Constants",
+    "clock_mux_hdl_module": "hdmi_clock_profile_mux",
+    "tmds_interface_vlnv": "panfpga.org:interface:tmds:1.0",
     "sideband_in_embedded_video_ip": false
   },
   "ps_domain": "freertos_ps7_cortexa9_0",

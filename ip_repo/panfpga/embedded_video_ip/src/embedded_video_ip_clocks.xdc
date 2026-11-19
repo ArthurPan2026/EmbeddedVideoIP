@@ -39,3 +39,16 @@ set_max_delay -quiet -datapath_only 8.000 \
 set_bus_skew -quiet 3.000 \
   -from [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/wr_gray_reg*/Q}] \
   -to [get_pins -quiet -hier -filter {NAME =~ *u_audio_fifo/wr_gray_rsync1_reg*/D}]
+
+# VGA and HD profiles are selected by a mutually exclusive clock mux.
+# Do not time data paths between inactive profile clocks.
+set_clock_groups -quiet -logically_exclusive \
+  -group [get_clocks -quiet -regexp {.*embedded_video_ip_video_out_clk_wiz_vga_0.*}] \
+  -group [get_clocks -quiet -regexp {.*embedded_video_ip_video_out_clk_wiz_hd_0.*}]
+
+# BUFGCTRL S pins are dedicated glitch-free asynchronous clock selectors.
+# They do not use the destination clock's setup/hold timing model.
+set_false_path -quiet -to [get_pins -quiet -hier -filter {NAME =~ *u_pixel_clock_profile_mux/S0 || NAME =~ *u_pixel_clock_profile_mux/S1 || NAME =~ *u_serial_clock_profile_mux/S0 || NAME =~ *u_serial_clock_profile_mux/S1}]
+
+# The reset IP filters its asynchronous external request into the pixel domain.
+set_false_path -quiet -to [get_pins -quiet -hier -filter {NAME =~ *pixel_reset/U0/EXT_LPF/lpf_int_reg/D}]

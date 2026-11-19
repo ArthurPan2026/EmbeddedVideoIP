@@ -2,98 +2,57 @@
 
 ## 产品边界
 
-当前开发版本为 0.3.0-dev.2，PS C 库和发布包共用该版本。Vivado 外部 VLNV 固定为 panfpga.org:video:embedded_video_ip:1.0，作为 IP-XACT 兼容标识独立维护。消费者在 Vivado IP Integrator 中只实例化一个顶层组件：`panfpga.org:video:embedded_video_ip:1.0`。该组件内部组合现有视频处理核、视频输出桥、VTC、Zybo Z7-20 时钟 profile 和 7-series HDMI 发送适配器；消费者不在自己的 BD 中逐块连接 scaler、VTC、`v_axi4s_vid_out` 或 TMDS 发送逻辑。
+消费者在 Vivado IP Integrator 中实例化 `panfpga.org:video:embedded_video_ip:1.0`。该 IP 内部包含视频源适配、scaler、AXI4-Stream Video 输出桥、运行时视频时序、双 profile 时钟和 7-series HDMI 发送器。HDMI 音频按静态参数裁剪。
 
-EmbeddedVideoIP 是配套的 PL+PS 产品：PL 侧提供一个 Vivado IP Catalog 顶层组件，PS 侧提供匹配的通用 C API 与 Zynq-7000 adapter。PS/DDR 控制器、源数据生产器、系统时钟/复位及板级引脚仍由消费工程提供。
+消费工程连接 PS/CIPS、DDR、AXI VDMA、输入帧缓冲、系统时钟和板级引脚。消费端 PS 软件读取 EDID，并按 sink 能力选择输出模式。
 
-`video_pipeline` 保留为内部视频处理子块。Canonical RTL 位于 `ip/video_pipeline_1_0/hdl/`；`ip_repo/` 由 `tools/package_ip.tcl` 和 `tools/package_composite_ip.tcl` 从 canonical 源码重新生成，禁止手改生成副本。外层由参数化 RTL 顶层包装固定的视频输出 BD，所有内部子模块仍在本仓库中分层维护。
+## 视频输出模式
 
-## 顶层 Vivado 组件
+| 模式码 | CTA VIC | 活动区 | 像素时钟标称值 | 当前实现频率 |
+|---|---:|---:|---:|---:|
+| 0 | 1 | 640×480 | 25.175 MHz | 25.178571 MHz |
+| 1 | 4 | 1280×720 | 74.250 MHz | 74.218750 MHz |
+| 2 | 34 | 1920×1080 | 74.250 MHz | 74.218750 MHz |
 
-### 时钟与复位
+VIC 4 和 VIC 34 共用 HD clock profile。时序发生器按 profile 选择水平、垂直 totals、porches 和同步极性。TMDS 串行时钟保持像素时钟的 5 倍。HD profile 的实际像素时钟比 CTA 标称值低约 421 ppm。ACR 使用实际频率计算。
 
-| 接口 | 方向 | 用途 |
-|---|---|---|
-| `aclk` | 输入 | PS AXI-Lite 和视频 AXI4-Stream 使用的 100 MHz 时钟 |
-| `aresetn` | 输入 | 系统 `aclk` 域低有效复位；内部音频与像素域同步释放复位 |
-| `hdmi_ref_clk` | 输入 | 50 MHz HDMI 时钟参考，接入板级 Clock Wizard profile |
+切换模式时，控制器等待当前帧结束，再切换时钟。像素域保持复位，直到新时钟稳定且 scaler 几何已提交。控制器释放复位后等待新模式 VSYNC。
 
-Zybo Z7-20 时钟 profile 使用 50 MHz `hdmi_ref_clk`，输出像素时钟约 25.178571 MHz、TMDS 串行时钟约 125.892857 MHz；VTC 固定为 640×480p60，不对其单独暴露 AXI-Lite 配置口。V1 采用固定的 Zybo Z7-20 时钟参数。其他消费板必须提供匹配的参考频率和输出 profile。
+## 视频输入
 
-### 视频源
+`s_axis_vdma` 接收 AMD AXI VDMA MM2S 的 32-bit 像素流。`TUSER[0]` 标记帧首，`TLAST` 标记行尾。输入尺寸最大 1280×720。源帧、行 stride 和三帧缓冲区由消费工程配置。
 
-| 接口 | 方向 | 用途 |
-|---|---|---|
-| `s_axis_vdma` | 输入 | AMD AXI VDMA MM2S 的 32-bit 像素流，`TUSER` 为帧首，`TLAST` 为行尾 |
-| `s_axis_hls` | 输入 | HLS AXI4-Stream Video 源 |
-| BRAM 读接口 | 双向/输入输出 | `bram_en`、`bram_addr`、`bram_dout`、`bram_busy`、`bram_frame_done`；单周期延迟的 RGB565 双像素读口 |
+`s_axis_hls` 接收 HLS AXI4-Stream Video。BRAM 源使用同步 32-bit 读口，每个字包含两个 RGB565 像素，低半字先输出。
 
-源选择、输入格式、尺寸、stride、scale/bypass 和 fit/stretch 沿用视频处理核现有语义。VDMA 和帧缓冲由消费系统配置，EmbeddedVideoIP 接收 VDMA 的 AXI4-Stream 输出，不拥有 Zynq PS 的 DDR 控制器。
+视频处理核支持 RGB565、RGB888 和 XRGB8888 输入转换。scaler 支持旁路、最近邻缩放、fit 几何和 stretch。输出尺寸最大 1920×1080。行缓冲可选 LUTRAM 或同步 BRAM；Zybo Z7-20 GBA profile 使用 BRAM 行缓冲。
 
-### PCM 音频源
+GBA 消费工程默认使用 LVGL 原生 1280×720 XRGB8888 输入。每帧 slot 为 4 MiB，三帧共 12 MiB。显式关闭 `PS_APP_NATIVE_720P_INPUT` 可构建 640×480 低负载输入。
+
+## PCM 音频输入
 
 | 信号 | 方向 | 定义 |
 |---|---|---|
-| `audio_pcm_clk` | 输入 | 100 MHz PCM AXI4-Stream 时钟 |
-| `s_axis_audio_pcm_tdata[31:0]` | 输入 | 每个样本拍打包一对有符号 16-bit PCM；`[15:0]` 为左声道、`[31:16]` 为右声道 |
+| `audio_pcm_clk` | 输入 | PCM AXI4-Stream 时钟，Zybo profile 为 100 MHz |
+| `s_axis_audio_pcm_tdata[47:0]` | 输入 | `[23:0]` 是有符号左声道；`[47:24]` 是有符号右声道 |
 | `s_axis_audio_pcm_tvalid` | 输入 | 当前立体声样本对有效 |
-| `s_axis_audio_pcm_tready` | 输出 | HDMI 音频通路可接受样本对时拉高 |
+| `s_axis_audio_pcm_tready` | 输出 | HDMI 音频 FIFO 可接收样本对时拉高 |
 
-PCM 按 AXI4-Stream 规则握手：生产者只在 `TVALID && TREADY` 时推进样本，并在被背压期间保持 `TVALID/TDATA` 稳定。V1 的音频范围固定为 2 声道 16-bit/48 kHz LPCM，并匹配 25.178571 MHz 像素时钟。消费者不分别配置采样率和像素时钟；音源适配器负责按 48 kHz 提供样本有效节拍。协议字段按 HDMI 1.4b 和 CEA-861-D 核对；音频数据路径参考 AMD PG235 与 XAPP460。2026-11-16 在 GBA 消费工程中完成信号路径预验证，C1-1 捕获到音频 PCM；尚未确认扬声器听感，也未完成正式板级验收或 HDMI 认证，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。接口不包含应用或游戏专属语义。ACR 由静态 profile 的实际像素时钟计算。
+音源按 `AUDIO_SAMPLE_RATE_HZ` 提供 PCM。默认采样率为 48 kHz，静态 profile 还支持 96 kHz 和 192 kHz。源端只在 TVALID 与 TREADY 同时为 1 时推进样本，并在背压期间保持数据稳定。
 
-### 控制与音频状态
+## 像素格式
 
-| 接口 | 方向 | 用途 |
-|---|---|---|
-| `s_axi` | 输入/输出 | 唯一 AXI4-Lite 控制口，包含视频寄存器和 HDMI 音频控制寄存器 |
+`OUTPUT_COLOR_MODE=0` 发送 RGB 4:4:4、8 bpc。`OUTPUT_COLOR_MODE=1` 发送 YCbCr 4:4:4、8 bpc。`COLORIMETRY` 选择 BT.601 或 BT.709，`YCC_RANGE` 选择 Limited 或 Full。AVI InfoFrame 跟随像素格式、色度和 VIC 更新。
 
-音频寄存器如下。PS API 与寄存器语义一致，消费应用不需要直接写寄存器。
+`OUTPUT_COLOR_DEPTH` 的当前有效值为 8。HDMI 1.4b Deep Color 10 bpc 需要 30-bit 像素组打包和新的 TMDS 时钟 profile。
 
-| 偏移 | 名称 | 访问 | 定义 |
-|---|---|---|---|
-| `0x00` | `CTRL` | RW/W1P | bit 13：DVI-safe/HDMI link-mode request；默认 DVI-safe，只有 EDID 确认 HDMI VSDB 后才请求 HDMI framing |
-| `0x34` | `AUDIO_CTRL` | RW | bit 0：HDMI 音频使能；bit 1：静音；其他位保留 |
-| `0x38` | `AUDIO_GAIN_Q15` | RW | bits `[16:0]`：增益 `0..32768`，`32768` 为 unity gain；其他位保留 |
-| `0x3C` | `AUDIO_STATUS` | RO | bit 0：`HDMI_AUDIO_ENABLED` 配置状态；bit 1：音频欠载 sticky 状态；bit 2：保留，V1 恒为 0；其他位保留 |
+## AXI-Lite 控制
 
-`AUDIO_STATUS.bit1` 的欠载 sticky 状态由 `CTRL.bit10` 清除。V1 通过 AXI4-Stream 背压处理 FIFO 满状态，不产生溢出事件；因此 `AUDIO_STATUS.bit2` 保留并恒为 0。HDMI 音频使能变化经跨时钟同步，并在当前数据包结束后清空 FIFO。静音和增益在像素时钟域同步后作用于后续从 FIFO 读取的样本。
+`s_axi` 是唯一控制口。完整寄存器定义见[寄存器表](register-map.md)。消费端先写输入尺寸、stride 和几何字段，再置 CTRL bit 8 提交。CTRL[15:14] 选择输出模式；同一次 CTRL 写入同时置 bit 8 与 bit 16 时，几何和模式一起提交。
 
-### 顶层接口名称
+GBA 端校验 EDID/CEA 扩展后，优先选择 sink 支持的 VIC 4，其次选择 VIC 34。输入画面按目标活动区居中适配。模式切换期间，消费端等活动模式与请求模式一致后再恢复新帧提交。
 
-| BD接口/端口 | 方向 | 定义 |
-|---|---|---|
-| `s_axi` | 输入/输出 | AXI4-Lite 控制 |
-| `s_axis_vdma` | 输入 | VDMA MM2S AXI4-Stream Video |
-| `s_axis_hls` | 输入 | HLS AXI4-Stream Video 源 |
-| BRAM pins | 双向/输入输出 | `bram_en`、`bram_addr`、`bram_dout`、`bram_busy`、`bram_frame_done` |
-| `s_axis_audio_pcm` | 输入 | 32-bit 双声道 PCM AXI4-Stream |
-| `tmds_tx_clk_p/n` | 输出 | HDMI TMDS 时钟差分对 |
-| `tmds_tx_data_p/n[2:0]` | 输出 | HDMI TMDS 三组数据差分对 |
+## TMDS 输出与打包
 
-`aclk` 关联 `s_axi`、`s_axis_hls` 和 `s_axis_vdma`，频率为 100 MHz。`audio_pcm_clk` 关联 `s_axis_audio_pcm`，频率也为 100 MHz。共用的 `aresetn` 在 `aclk` 接口元数据中声明，内部音频和像素时钟域分别同步释放复位。固定视频输出 BD 把 `v_axi4s_vid_out`、VTC 和时钟配置接到 HDMI TX。EmbeddedVideoIP 不提供 I²S、HPD 或 DDC 接口；其他音频设备和 HDMI sideband 由消费项目管理。
+`tmds_tx` 输出 TMDS clock 和三组 data 差分信号。物理端口名保持 `tmds_tx_clk_p/n` 与 `tmds_tx_data_p/n[2:0]`，便于延用板级 XDC。TMDS 接口定义位于 `ip_repo/if/tmds_v1_0/`。
 
-Zybo Z7-20 使用 7-series HDMI 发送适配器。其他器件系列只能在提供匹配的时钟/PHY 子模块并完成器件、时序和板级验证后加入支持矩阵。
-
-## 静态功能配置
-
-同一 IP 版本用 Vivado 参数裁剪 HDMI 音频逻辑：
-
-- `ENABLE_HDMI_AUDIO=0` 时不综合 PCM FIFO、LPCM/ACR/Audio InfoFrame 逻辑和动态包存储；保留固定 AVI InfoFrame 和静态 AVI-only serializer，保证 HDMI 1.4b Data Island。
-- `ENABLE_HDMI_AUDIO=1` 时综合完整的 HDMI 音频路径，可由 `AUDIO_CTRL` 在运行时使能/静音。
-- V1 固定双声道 48 kHz PCM 和 Zybo HDMI 时钟 profile；采样率/像素时钟作为匹配配置一起生成。
-
-这些是同一 EmbeddedVideoIP 版本的静态 profile，不发布相互分叉的核心版本。需要 HDMI 音频与不需要音频的消费项目通过配置选择所需逻辑。
-
-## 配套 PS C API
-
-通用 API 提供 `VideoOut_SetLinkMode` / `VideoOut_GetLinkMode`，Zynq adapter 提供 `VideoOutXilinx_SetLinkMode`。该字段是协议模式请求；TX 在像素时钟域双触发同步，并在包完成和水平同步进入水平消隐期安全切换。消费者应在 EDID 通过校验且发现 HDMI VSDB 后请求 HDMI；HPD 下降、EDID 无效或无 VSDB 时请求 DVI-safe。`VideoOut_GetLinkMode` 返回寄存器中的请求值，不代表对端物理链路或 CTS 已验证。
-
-通用接口提供 `VideoOut_SetHdmiAudioEnabled`、`VideoOut_SetAudioMute`、`VideoOut_SetAudioGainQ15` 和 `VideoOut_GetAudioStatus`；Zynq-7000 adapter 提供对应的 `VideoOutXilinx_` 封装。视频和音频共用同一个 `VideoOutIo` AXI-Lite 访问对象。
-
-消费工程的 UI 自己管理完整音频输出路径。选择 HDMI 时调用 `VideoOutXilinx_SetHdmiAudioEnabled(..., 1)`；使用其他音频后端时关闭 HDMI 音频并由消费工程配置该路径。音源和 UI 路由均留在消费工程，EmbeddedVideoIP 不依赖特定音源。
-
-## IP Catalog、构建与验证
-
-`tools/video_flow.py package` 先生成内部 `video_pipeline`，再从 canonical HDL、Digilent 源码和固定视频输出 BD 打包外层 `embedded_video_ip`。消费者只添加外层 VLNV。外层内部包含 `video_pipeline`、`v_axi4s_vid_out`、VTC、Zybo 时钟 profile 和 `embedded_video_ip_7series_tx`，不包含 PS/CIPS、I²S、HPD 或 DDC。
-
-`validate` 检查 composite IP 的端口映射、AXI-Lite 地址段、音频静态参数和 IP Catalog 实例。`synth --profile composite_audio_off` 与 `composite_audio_on` 使用同一视频配置，分别记录 LUT/FF/LUTRAM/BRAM、WNS/WHS/TNS/THS、输入哈希和产物哈希。
+`tools/video_flow.py package` 生成内部视频核和组合式 EmbeddedVideoIP。`validate` 检查 IP Catalog 的接口、寄存器窗口和参数。`sim` 运行 SystemVerilog RTL 回归、PS C API 主机测试和构建流程测试。

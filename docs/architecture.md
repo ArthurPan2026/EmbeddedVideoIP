@@ -1,74 +1,70 @@
 # EmbeddedVideoIP 架构与接口契约
 
-## 产品层级
+## 模块关系
 
-EmbeddedVideoIP 对消费者呈现为一个 Vivado IP Integrator composite IP；视频处理、HDMI 输出时序、7-series 发送适配和可选 HDMI 音频在内部拆成独立子模块。PS C 库与 PL composite IP 成对发布，但 PS/CIPS 仍由消费工程提供。
+EmbeddedVideoIP 以一个 Vivado IP Integrator composite IP 交付。PL 负责视频缩放、输出时序、HDMI packet 和 TMDS。消费端 PS 读取 EDID，计算输入几何并提交输出模式。
 
 ```mermaid
 flowchart LR
-    subgraph EVIP["EmbeddedVideoIP composite IP"]
-        SRC["视频源适配<br/>VDMA / HLS / BRAM"] --> CORE["格式转换<br/>scaler / 旁路"]
-        CORE --> VOUT["AXI4-Stream to Video Out<br/>VIC 1 固定 VTC 时序"]
-        VOUT --> TX["7-series TMDS TX<br/>DVI/HDMI framing 与 packet scheduler"]
-        PCM["可选 PCM AXI4-Stream"] --> AUDIO["异步 FIFO / LPCM、ACR、InfoFrame"]
-        AUDIO --> TX
-        AVI["固定 VIC 1 AVI InfoFrame"] --> TX
-        CTRL["AXI-Lite 控制口<br/>link-mode request"] --> CORE
-        CTRL --> AUDIO
-    end
-    DDR["消费工程 DDR / VDMA"] --> SRC
-    HLS["消费工程 HLS 源"] --> SRC
-    BRAM["消费工程 BRAM 帧缓存"] --> SRC
-    PS["配套 PS C 库"] --> CTRL
-    EDID["消费端 PS HPD/DDC<br/>E-EDID / HDMI VSDB"] --> PS
-    TX --> HDMI["HDMI 显示器"]
+    PS["PS EDID / UI / VDMA config"] --> CTRL["AXI-Lite mode + geometry"]
+    VDMA["DDR / AXI VDMA MM2S"] --> FORMAT["RGB format adapter"]
+    FORMAT --> SCALER["NN scaler / 1-line buffer"]
+    CTRL --> SCALER
+    CTRL --> MODE["Mode transition controller"]
+    MODE --> CLOCKS["VGA / shared HD clocks + BUFGCTRL"]
+    MODE --> TIMING["VIC timing generator"]
+    SCALER --> VOUT["AXI4-Stream Video Out"]
+    TIMING --> VOUT
+    VOUT --> TX["7-series TMDS TX"]
+    CLOCKS --> TX
+    PCM["48-bit LPCM AXI4-Stream"] --> FIFO["Async FIFO / 24-bit LPCM packets"]
+    FIFO --> TX
+    TX --> HDMI["TMDS differential output"]
 ```
 
-`video_pipeline` 是内部处理核，canonical 源码只维护在 `ip/video_pipeline_1_0/hdl/`。`ip_repo/` 是打包脚本的生成结果。消费者应添加顶层 `embedded_video_ip` VLNV，不需要分别实例化 scaler、VTC、`v_axi4s_vid_out` 或 HDMI TX。
+PS/CIPS、DDR、VDMA MM2S、HPD 和 DDC 由消费工程提供。EDID 解析与 sink 能力选择属于消费端软件。
 
-## 视频接口契约
+## 视频时序和模式切换
 
-AXI4-Stream Video 每个握手 beat 对应一个像素。`TUSER[0]` 标记帧首，`TLAST` 标记行尾；在 `TVALID=1 && TREADY=0` 时，数据和旁带必须保持稳定。跨时钟源由消费端按时钟关系连接 Clock Converter。
+PL 提供 VIC 1、VIC 4 和 VIC 34：
 
-输入包括：
+| VIC | 时序 | 活动区 | 标称像素时钟 | 时钟 profile 实际像素时钟 |
+|---:|---|---:|---:|---:|
+| 1 | 640×480p60 | 640×480 | 25.175 MHz | 25.178571 MHz |
+| 4 | 720p60 | 1280×720 | 74.250 MHz | 74.218750 MHz |
+| 34 | 1080p30 | 1920×1080 | 74.250 MHz | 74.218750 MHz |
 
-- BRAM：同步 32-bit 读口，每字两个 RGB565 像素，低半字像素先出；调用方须在整帧读取期间保持 bank 稳定。
-- HLS：AXI4-Stream Video。
-- VDMA：AXI VDMA MM2S AXI4-Stream 视频输入；帧地址、HSIZE、VSIZE 和 STRIDE 由配套 PS adapter 配置。
+VIC 4 和 VIC 34 使用同一 HD clock profile。时序发生器按 VIC 选择 H/V totals、porches、同步宽度和极性。clock mux 使用 7-series BUFGCTRL 切换 VGA 与 HD 时钟。
 
-内部颜色表示为 RGB888。AXI4-Stream Video 的 RBG 分量顺序、XRGB/BGRX 32-bit 容器和 BRAM RGB565 的转换在输入适配中完成。输出为 640×480p60 profile。最近邻 scaler 支持旁路、等比例留边和拉伸；越界几何或坏帧会置错误状态，坏帧丢弃到下一 SOF 后恢复。
+切换控制器等当前帧 VSYNC 到达，再切换时钟。它保持像素域复位和 DVI-safe framing，直到时钟锁定、scaler 几何提交完成。复位释放后，控制器等新时序产生 VSYNC，再宣布模式生效并允许 HDMI 音频。
 
-### 视频静态裁剪
+HD profile 实际像素时钟为 74.218750 MHz，较 74.25 MHz 标称值低约 421 ppm。ACR 使用实际时钟计算。显示器兼容性以目标板实测为准。
 
-同一 IP 可使用参数固定视频源/格式，去掉运行时源选择逻辑；`ENABLE_SCALER=0` 走帧边界监测的直通通路；行缓冲可选 LUTRAM 或同步 BRAM。消费工程用 profile 选择这些特性，不需维护多个核心分支。
+## 视频输入与缩放
 
-`ENABLE_HDMI_AUDIO=0` 时，综合会去掉 PCM FIFO、音频 packetizer 和通用包存储，保留固定 AVI Data Island serializer。`ENABLE_HDMI_AUDIO=1` 时，使用通用 packet store 处理 LPCM、ACR 和 Audio InfoFrame。
+VDMA 使用 XRGB8888，每拍一个像素。AXI4-Stream Video 以 TUSER[0] 标记帧首，以 TLAST 标记行尾。内部格式适配把 RGB565、RGB888 和 XRGB8888 转成 RGB888。
 
-## 音频接口契约
+GBA 消费端默认使用 LVGL 原生 1280×720 输入。三帧 XRGB8888 VDMA 缓冲区各占 4 MiB。PS linker 将 0x18000000～0x18C00000 保留给这些缓冲区。设置 CMake 选项 PS_APP_NATIVE_720P_INPUT=OFF 可切换到 640×480 输入。
 
-可选音频接口是 100 MHz AXI4-Stream PCM 输入。每个有效 beat 携带一对 signed 16-bit 样本：左声道位于 `TDATA[15:0]`，右声道位于 `TDATA[31:16]`。V1 的 `AUDIO_SAMPLE_RATE_HZ` 默认值为 48000；消费项目源 adapter 负责按该采样率产生 `TVALID`。
+scaler 支持 11-bit source index、origin、step 和 DDA remainder。最高输入为 1280×720，最大输出为 1920×1080。BRAM 行缓冲保存缩放源行；一致的输入输出几何走 1:1 旁路。fit 模式根据源宽高比计算活动区和 letterbox/pillarbox offset。
 
-EmbeddedVideoIP 内部为 HDMI 音频路径提供样本 FIFO、HDMI 子帧/音频包格式化、ACR 参数和 HDMI 发送调度。V1 固定为 2 声道 16-bit/48 kHz LPCM，并实现 Audio InfoFrame 与数据岛子集，HDMI 字段按 1.4b 和 CEA-861-D 核对；音频数据路径参考 AMD PG235 与 XAPP460。2026-11-16 在 GBA 消费工程上完成信号路径预验证，采集卡收到 PCM；尚未确认显示器扬声器听感，也未完成正式 HDMI 音频验收或认证，详见[预验证记录](validation-2026-11-16-hdmi-audio.md)。控制寄存器可使能/静音 HDMI 音频并设定 Q15 增益。EmbeddedVideoIP 不包含 I²S codec 发送器或特定 codec 控制；这类额外音频设备由消费工程管理。
+## HDMI 色彩
 
-## HDMI 与板级边界
+默认输出为 RGB 4:4:4、8 bpc。静态参数可选择 YCbCr 4:4:4、8 bpc，以及 BT.601/BT.709 和 YCC range。AVI InfoFrame 随 VIC、色彩格式、色度和 range 更新。
 
-V1 的 VTC profile 固定为 640×480p60。Zybo Z7-20 使用 50 MHz 参考时钟；当前 Vivado 时钟配置实际输出约 25.178571 MHz 像素时钟和 125.892857 MHz TMDS 串行时钟。时钟输入频率由 Zybo profile 固定，VTC 使用静态 profile，不占用额外 PS AXI-Lite 地址段。EmbeddedVideoIP 顶层只暴露 TMDS 信号。HPD/DDC 由消费系统的 PS GPIO/IIC 和板级约束负责。
+当前像素输入接口为 RGB888。Deep Color 10 bpc 需要 30-bit pixel-group packing 和 1.25 倍 TMDS clock profile，当前不在实现范围内。
 
-当前 HDMI 发送适配器面向 Zybo Z7-20/XC7Z020。HDMI 顶层只暴露 TMDS 差分信号。HPD 与 DDC 不属于 EmbeddedVideoIP，由消费工程通过 GPIO、IIC 和板级约束处理。更换器件系列时必须为对应 PHY、时钟、I/O 约束与软件提供器件/板级 profile，并通过 OOC、完整实现、时序和实板验证后才能加入支持矩阵。RTL 不含器件原语不代表该系列已经通过验证。
+## 音频
 
-## HDMI 1.4b link mode 与 packet contract
+消费端通过 100 MHz AXI4-Stream 提交 48-bit PCM：
 
-PL 内部由 7-series TX 负责 HDMI/DVI framing、行槽位、AVI/音频 packet 调度和 BCH 组包。DVI-safe 是复位默认状态；AXI-Lite bit 13 只表达 PS 的模式请求，TX 在像素时钟域同步后等待当前包结束和HSync 边沿消隐期切换。AVI 和 Audio InfoFrame 的发送标志由像素域 VSYNC 上升沿重置，避免维护重复的行计数器。GBA PS 读取并校验 E-EDID/CEA 扩展，在识别 HDMI VSDB 后才发出 HDMI 请求。协议字段及 CTS 对应项见 [HDMI 1.4b 合规映射](hdmi-1.4b-conformance.md)。
+- TDATA[23:0]：有符号 24-bit 左声道。
+- TDATA[47:24]：有符号 24-bit 右声道。
 
-## CDC 与复位边界
+GBA 16-bit PCM 由消费端 sign-extend 到 24-bit。I²S codec path 保持原样。TX 组装 LPCM sample packet、Audio InfoFrame 和 ACR packet。ACR N 由采样率 profile 选择，CTS 使用当前实际 pixel clock 与 H_TOTAL 计算。
 
-跨域单比特控制先进入目标时钟域的两级同步器。每一级寄存器都标记为 `ASYNC_REG`。音频使能请求和 HDMI 实际链路状态分别同步，再在 PCM 域与像素域组合。
+## CDC 和复位
 
-`Q15` 增益通过请求/应答握手跨到像素域。发送端在收到确认前保持增益总线稳定。像素域同步请求和总线，确认后一次性更新有效增益。握手未完成时，发送端保留当前值；确认后再发送最新写入值。像素域复位释放后，发送端也会重发当前增益。
+模式请求、active mode、profile lock、VSYNC 和音频控制按其时钟域同步。音频 gain 通过握手跨到像素域，跨域期间保持总线稳定。PCM 异步 FIFO 使用同步后的 Gray 指针。
 
-PCM 异步 FIFO 使用寄存的 Gray 指针。两级指针同步器标记为 `ASYNC_REG`，综合器保留源端 Gray 指针寄存器。XDC 把 Gray 总线最大延迟限制在 8 ns 内，并把位间偏斜限制在 3 ns 内。FIFO 只在读指针同步确认数据有效后读取存储器。
-
-运行状态计数器在像素和串行时钟域内分别使用异步置位、同步释放的复位。音频开关两种 OOC `report_cdc` 报告均无 Critical 项。音频开启报告还保留 1 条 CDC-6 增益总线握手提示，以及 128 条 CDC-15 FIFO 存储器访问提示。对应文件位于 OOC profile 目录，包含 cdc.rpt、bus_skew.rpt 和 methodology.rpt。
-## PS 控制接口
-
-单一 AXI4-Lite 接口包含视频处理控制和 HDMI 音频控制。配套 PS API 计算 fit/stretch 的有效区域和 DDA 比例，再提交视频配置；音频 API 写 HDMI 使能、静音和增益并读取 FIFO 欠载状态。完整字段定义见[寄存器表](register-map.md)，顶层端口见[组合式 IP 接口](composite-ip-api.md)。
+时钟切换时，mode controller 将 pixel_reset_hold 送到视频输出 wrapper。wrapper 将其并入 proc_sys_reset 的复位输入，等所选 Clock Wizard lock 后同步释放像素域复位。

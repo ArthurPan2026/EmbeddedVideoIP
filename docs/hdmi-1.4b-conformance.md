@@ -1,36 +1,33 @@
-# HDMI 1.4b 合规映射（EmbeddedVideoIP 0.3.0-dev.2）
+# EmbeddedVideoIP 1.4b 模式实现与测试映射
 
-本文以用户提供的 HDMI Specification 1.4b 为强制基线。规范 §1.2 要求遵守 HDMI 1.4b 所列的规范性引用；视频格式遵循 CEA-861-D，EDID/DDC 使用 EDID 1.3、E-EDID A.1 与 E-DDC v1，音频按适用的 IEC 60958/61937 要求。只有 §6.3 明确允许详细时序参考后续版本；本实现不以 HDMI 2.x/FRL 或较新 CTA 版本扩展范围。
+当前实现范围以用户提供的 HDMI Specification 1.4b 为准，视频时序遵循 CEA-861-D VIC 定义。以下表格记录设计对应的规范条款和 RTL 验证项。
 
-## 固定声明能力
+## 视频和色彩
 
-| 能力 | EmbeddedVideoIP 本次声明 |
-|---|---|
-| 输出时序 | CEA-861-D VIC 1，640×480p59.94/60，固定像素时钟 profile |
-| 视频编码 | RGB 4:4:4、8 bpc（24 bit/pixel）、全范围 RGB |
-| HDMI packet | AVI InfoFrame 和可选音频包；每个 HDMI Data Island 使用 packet BCH |
-| 音频 | 可选双声道 LPCM，16-bit、48 kHz、Layout 0；无 HDMI audio 时仍发送 AVI InfoFrame |
-| 接收端识别 | 消费端读取 EDID/CEA 扩展；只在校验通过且识别 HDMI VSDB 后请求 HDMI framing |
-| 不声明 | YCbCr、Deep Color、3D、4K、HDCP、CEC 协议、ARC/eARC、其他视频时序 |
-
-消费项目仍须按其实际软硬件能力填写 HDMI CDF。GBA 的 scaler 能输出 fit/stretch 画面，因此须按 HDMI CTS CDF 声明 AVI 信息可用并通过 Test 7-27。
-
-## 规范要求到实现/验证
-
-| 要求 | 规范依据 | 本实现 | 证据/限制 |
+| 功能 | 标准依据 | RTL 实现 | RTL 验证 |
 |---|---|---|---|
-| 最低视频模式、像素格式与颜色范围 | HDMI 1.4b §§6.2.1、6.2.3–6.2.4、6.6；CEA-861-D | 固定 VIC 1、RGB 24 bpp、Full Range | RTL profile 与 AVI payload 仿真；电气/时序 tolerance 仍须 CTS 测量 |
-| DVI 与 HDMI 传输区别 | HDMI 1.4b §§4.2、5.2；DVI 1.0 | 无 HDMI VSDB 或复位时输出 DVI 视频/控制符号，不插入 HDMI 前导、保护带或 Data Island；确认 HDMI 后才在HSync 边沿消隐期切换 | scheduler 与链路切换 RTL 测试；未做 DVI/HDMI 显示器兼容测试 |
-| HDMI 视频信息 | HDMI 1.4b §8.2.1；CEA-861-D AVI InfoFrame；CTS 7-27 | 每场调度版本 2、13 字节 AVI InfoFrame：PB1 的 Y1:Y0=00（RGB）、A0=1、B1:B0=00、S1:S0=00，故 PB1=0x10；位域按 HDMI 1.4b Table 8-2（第 135 页）；PB2=C=00（VGA 默认 sRGB）、M=4:3、R=8；PB3=Q full-range；PB4=VIC 1；PR=0；checksum 由固定 payload 计算，BCH 由统一 packet assembler 生成 | RTL 检查 header、payload、checksum 与 audio-off 发包；真实 CTS 7-27 未执行 |
-| Data Island 最低频度与编码 | HDMI 1.4b §§5.2.1、5.2.3.2、5.3；CTS 7-17/7-19 | HDMI 模式每场调度 AVI island；VSYNC 每场重置发送标志，并在下一可用行槽发送 AVI；packet 由 BCH 编码 | scheduler/packet source/assembler RTL 测试；CTS 仪器测试未执行 |
-| Extended Control Period | HDMI 1.4b §5.2.1.2；CTS 7-18 | 水平消隐在岛尾与视频前导/活动区之间保留控制字符；VIC 1 profile 连续控制段超过 32 字符 | scheduler RTL 检查 32 字符控制段；CTS 7-18 仪器测试未执行 |
-| LPCM 与 IEC 60958 状态 | HDMI 1.4b §7.3、§7.6；IEC 60958；CTS 7-30/7-32 | 保留 2ch 16-bit/48 kHz Layout 0 路径与通道状态、奇偶校验 | 既有 PCM/packet RTL 测试；分析仪音频 CTS 未执行 |
-| ACR 更新速率 | HDMI 1.4b §§7.2.3、7.8.2；CTS 7-29 | N=6144；按 128×Fs/N 做分数行累加，并从实际 ACR 包发送行计起；不再固定每 31 行 | RTL 仿真检查平均 line cadence；CTS 7-29 未执行 |
-| EDID 与 sink 判别 | HDMI 1.4b §§8.1、8.3–8.5；E-EDID 1.3、E-DDC v1；CTS 7-1/7-33 | GBA PS 侧按 100 kHz 读取扩展块、校验 checksum/CEA v3/HDMI VSDB；失效时请求 DVI-safe | GBA host parser tests；板级 DDC/HPD 测试未执行 |
-| CDC 与复位 | AMD 7-series CDC/时序设计规则 | link-mode、音频使能和静音分别同步到目标域；Q15 增益用稳定数据与请求/应答握手；Gray FIFO 指针加 ASYNC_REG、8 ns 最大延迟和 3 ns 位间偏斜约束；像素/串行状态复位同步释放 | RTL 回归与 OOC report_cdc：无 Critical 项；音频开启时有 1 条 CDC-6 握手提示和 128 条 CDC-15 FIFO 存储器提示；GBA 消费构建提供集成时序/CDC 证据，不代表 HDMI CTS/ATC 认证 |
+| 640×480p、720p60、1080p30 | HDMI 1.4b §6.3.1、§6.3.2；CEA-861-D VIC 1、4、34 | VIC 1 使用 VGA clock；VIC 4 和 VIC 34 共用 HD clock；时序发生器按 profile 选择 porch、sync 和 active 区 | timing generator bench 逐点检查三种 profile 的 H/V totals、active、blank、sync 极性、profile change 与 frame wrap |
+| RGB 4:4:4 8 bpc | HDMI 1.4b §6.2.3、§6.5 Table 6-1 | 默认 RGB888 TMDS 编码，AVI InfoFrame 声明 RGB 和 VIC | RGB encoder bench 覆盖全部 8-bit 输入码 |
+| YCbCr 4:4:4 8 bpc | HDMI 1.4b §6.2.3、§6.5 Table 6-1 | 静态 profile 可选择 BT.601/BT.709 与 Full/Limited range；AVI 色彩字段跟随参数 | 矩阵、range、AVI 字段和 checksum benches |
+| Deep Color | HDMI 1.4b §6.5 Table 6-1 | 当前 TX pixel interface 为 RGB888，输出为 8 bpc | 不作为本次实现项；10 bpc 需要 30-bit pixel-group packing 和 1.25 倍 TMDS clock |
 
-## 变更边界
+HD profile 的时钟合成器输出 74.218750 MHz，CTA 标称值为 74.25 MHz，误差约 421 ppm。仿真使用实际频率计算音频 ACR。HDMI 接收端容差需在开发板上测量。
 
-本版本不增加视频模式、像素格式、采样率或音频布局。新增 AVI 内容是固定现有 VGA 输出所需的协议元数据；DVI-safe framing 与 HDMI VSDB 判别使同一输出能按接收端类型遵守 1.4b 的传输边界。实现抽象保持静态、可综合：PS 负责 HPD/DDC/EDID，AXI-Lite 只传 link-mode 请求，TX 内部统一调度 HDMI packet 和行槽位。
+## HDMI packet 与音频
 
-本版本的自动仿真、主机测试、IP Catalog 检查和 OOC 综合均不等价于正式 HDMI 合规认证。HDMI 电气测量、CTS/ATC、显示器兼容性及消费工程 post-route 时序尚须另行完成。
+| 功能 | 标准依据 | RTL 实现 | RTL 验证 |
+|---|---|---|---|
+| AVI InfoFrame | HDMI 1.4b §8.2.1；CEA-861-D | VIC、aspect、pixel encoding、colorimetry 和 quantization range 来自 active profile | VIC 1/4/34、色彩模式、checksum、封包次序 |
+| Data Island 和 BCH | HDMI 1.4b §5.2、§5.3 | 系统级 HDMI/DVI mux、包前导、保护带、控制周期和 BCH | packet assembler、TMDS mode mux、line-slot scheduler |
+| 24-bit LPCM | HDMI 1.4b §7.3.3 Table 7-5 | 48-bit AXI4-Stream，每帧为双声道 24-bit PCM；默认 48 kHz | 正负满幅、零样本、背压、FIFO 满空、采样包字段 |
+| ACR | HDMI 1.4b §7.2.3、§7.8.2 | N=6144/12288/24576 对应 48/96/192 kHz；CTS 基于实际 PCLK 和 H_TOTAL | 三个视频 profile × 三个采样率的 ACR cadence |
+| EDID 能力 | HDMI 1.4b §8.1、§8.3.2 Table 8-16；E-EDID / E-DDC | PS 消费端解析 CEA VIC、HDMI VSDB 最大 TMDS 和 LPCM SAD | C host parser 测 checksum、截断块、重复/保留 VIC、TMDS 边界与 SAD |
+| DVI-safe fallback | HDMI 1.4b §4.2、§5.2 | PS 发送模式请求；PL 在切换期间保持 DVI-safe，等时钟锁定和新 VSYNC | mode controller bench 覆盖请求、锁定等待、config-ready、VSYNC 与超时 |
+
+TX 使用 8-bit pixel profile。HDMI 1.4b 高码率音频 HBR、3D、4K、HDCP、CEC、ARC/eARC 不包含在本次功能范围。
+
+## 消费端验证范围
+
+GBA 消费端按 sink 能力优先选择 VIC 4，再选 VIC 34，其他情况使用 VIC 1。默认 GBA PS 配置生成原生 1280×720 LVGL/XRGB8888 VDMA 输入。PL scaler 负责匹配 sink 选择的输出模式。
+
+Vivado Simulator 2025.2.1 的完整 RTL 回归、IP Catalog 验证、GBA PS 应用构建和开发板输出模式验收分别记录在相应 validation 文件中。RTL/XSim 结果验证逻辑和边界，不替代开发板电气、时钟容差或 HDMI CTS 测试。

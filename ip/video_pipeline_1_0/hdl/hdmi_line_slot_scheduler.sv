@@ -1,15 +1,16 @@
 `timescale 1ns/1ps
 // 固定640x480时序的水平消隐调度器，活动区和垂直消隐区逐行执行。
 module hdmi_line_slot_scheduler #(
-  parameter integer H_TOTAL = 800,
-  parameter integer H_ACTIVE_SIZE = 640,
-  parameter integer H_SYNC_START = 656,
-  parameter bit HSYNC_ACTIVE_LEVEL = 1'b1,
   parameter integer VIDEO_LOOKAHEAD_CYCLES = 10
 ) (
-  input  logic       pixel_clk,
-  input  logic       aresetn,
+  input  logic        pixel_clk,
+  input  logic        aresetn,
+  input  logic [31:0] h_total,
+  input  logic [31:0] h_active_size,
+  input  logic [31:0] h_sync_start,
+  input  logic        hsync_active_level,
   input  logic       hdmi_mode_request,
+  input  logic       video_profile_valid,
   output logic       hdmi_mode_active,
   input  logic       packet_active,
   input  logic       video_de_lookahead,
@@ -37,13 +38,11 @@ module hdmi_line_slot_scheduler #(
   // This VIC 1 profile leaves control symbols between islands and video periods;
   // the line-slot bench checks the HDMI 1.4b 32-character extended-control minimum.
   localparam integer CONTROL_BEFORE_ISLAND = 12;
-  localparam integer ISLAND_START = H_SYNC_START + CONTROL_BEFORE_ISLAND;
-  localparam integer ISLAND_END = ISLAND_START + DATA_ISLAND_CYCLES;
-  localparam integer PREPARE_X = H_ACTIVE_SIZE - 20;
-  localparam integer X_WIDTH = $clog2(H_TOTAL);
-
+  logic [31:0] island_start;
+  logic [31:0] island_end;
+  logic [31:0] prepare_x;
   logic timing_locked;
-  logic [X_WIDTH-1:0] x_count;
+  logic [31:0] x_count;
   logic lookahead_de_q;
   logic [3:0] video_preamble_count;
   logic island_available;
@@ -53,12 +52,18 @@ module hdmi_line_slot_scheduler #(
   logic lookahead_de_rise;
   (* ASYNC_REG = "TRUE" *) logic hdmi_mode_meta, hdmi_mode_sync;
 
-  assign hsync_active = (hsync_delayed == HSYNC_ACTIVE_LEVEL);
+  always_comb begin
+    island_start = h_sync_start + 32'(CONTROL_BEFORE_ISLAND);
+    island_end = island_start + 32'(DATA_ISLAND_CYCLES);
+    prepare_x = (h_active_size >= 32'd20) ? (h_active_size - 32'd20) : 32'd0;
+  end
+
+  assign hsync_active = (hsync_delayed == hsync_active_level);
   assign hsync_active_rise = hsync_active && !hsync_active_q;
   assign lookahead_de_rise = video_de_lookahead && !lookahead_de_q;
   assign island_available = hdmi_mode_active && !packet_cancel &&
                             (packet_loaded || packet_offer);
-  assign line_prepare = timing_locked && (x_count == PREPARE_X);
+  assign line_prepare = timing_locked && (h_total != 32'd0) && (x_count == prepare_x);
 
   // HSync每行同步一次计数器；同一行既能处理活动区，也能处理VBlank。
   always_ff @(posedge pixel_clk or negedge aresetn) begin
@@ -81,12 +86,12 @@ module hdmi_line_slot_scheduler #(
       // HSync edge is inside horizontal blanking; switch there only with no packet
       // in flight so the next active line uses one complete framing mode.
       if (hsync_active_rise && !packet_active && !packet_loaded)
-        hdmi_mode_active <= hdmi_mode_sync;
+        hdmi_mode_active <= hdmi_mode_sync && video_profile_valid;
 
       if (hsync_active_rise) begin
-        x_count <= X_WIDTH'(H_SYNC_START);
+        x_count <= h_sync_start;
         timing_locked <= 1'b1;
-      end else if (x_count == H_TOTAL - 1) begin
+      end else if ((h_total == 32'd0) || (x_count >= h_total - 1'b1)) begin
         x_count <= '0;
       end else begin
         x_count <= x_count + 1'b1;
@@ -122,16 +127,16 @@ module hdmi_line_slot_scheduler #(
       end else if (video_de_delayed) begin
         symbol_mode = MODE_VIDEO;
       end else if (timing_locked && island_available &&
-                   x_count >= ISLAND_START && x_count < ISLAND_END) begin
-        if (x_count < ISLAND_START + PREAMBLE_CYCLES)
+                   x_count >= island_start && x_count < island_end) begin
+        if (x_count < island_start + PREAMBLE_CYCLES)
           symbol_mode = MODE_DATA_PREAMBLE;
-        else if (x_count < ISLAND_START + PREAMBLE_CYCLES + GUARD_CYCLES ||
-                 x_count >= ISLAND_START + PREAMBLE_CYCLES + GUARD_CYCLES + PACKET_CYCLES)
+        else if (x_count < island_start + PREAMBLE_CYCLES + GUARD_CYCLES ||
+                 x_count >= island_start + PREAMBLE_CYCLES + GUARD_CYCLES + PACKET_CYCLES)
           symbol_mode = MODE_DATA_GUARD;
         else
           symbol_mode = MODE_DATA_PAYLOAD;
 
-        if (x_count == ISLAND_START + PREAMBLE_CYCLES + GUARD_CYCLES - 1 &&
+        if (x_count == island_start + PREAMBLE_CYCLES + GUARD_CYCLES - 1 &&
             packet_loaded && !packet_cancel)
           packet_start = 1'b1;
       end
@@ -139,12 +144,7 @@ module hdmi_line_slot_scheduler #(
   end
 
   initial begin
-    if (H_TOTAL - H_ACTIVE_SIZE < CONTROL_BEFORE_ISLAND + DATA_ISLAND_CYCLES +
-                                    12 + VIDEO_LOOKAHEAD_CYCLES)
-      $error("水平消隐不足以容纳前后控制期、数据岛和视频前导");
     if (VIDEO_LOOKAHEAD_CYCLES != PREAMBLE_CYCLES + GUARD_CYCLES)
-      $error("视频前瞻周期必须等于8拍前导加2拍保护带");
-    if (H_SYNC_START <= H_ACTIVE_SIZE || H_SYNC_START >= H_TOTAL)
-      $error("HSYNC起始位置必须位于活动区之后和行尾之前");
+      $error("VIDEO_LOOKAHEAD_CYCLES must equal the 8-cycle preamble plus 2-cycle guard");
   end
 endmodule

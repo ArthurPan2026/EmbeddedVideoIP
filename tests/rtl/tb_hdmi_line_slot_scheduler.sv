@@ -43,12 +43,11 @@ module tb_hdmi_line_slot_scheduler;
     end
   end
 
-  hdmi_line_slot_scheduler #(
-    .H_TOTAL(H_TOTAL), .H_ACTIVE_SIZE(H_ACTIVE), .H_SYNC_START(H_SYNC_START),
-    .HSYNC_ACTIVE_LEVEL(1'b1), .VIDEO_LOOKAHEAD_CYCLES(10)
-  ) dut_high (
+  hdmi_line_slot_scheduler #(.VIDEO_LOOKAHEAD_CYCLES(10)) dut_high (
     .pixel_clk(pixel_clk), .aresetn(aresetn),
-    .hdmi_mode_request(hdmi_mode_request), .hdmi_mode_active(hdmi_mode_active_high),
+    .h_total(H_TOTAL), .h_active_size(H_ACTIVE), .h_sync_start(H_SYNC_START),
+    .hsync_active_level(1'b1),
+    .hdmi_mode_request(hdmi_mode_request), .video_profile_valid(1'b1), .hdmi_mode_active(hdmi_mode_active_high),
     .packet_active(packet_active),
     .video_de_lookahead(raw_de), .video_de_delayed(delayed_de),
     .hsync_delayed(hsync_high), .packet_loaded(packet_loaded),
@@ -56,12 +55,12 @@ module tb_hdmi_line_slot_scheduler;
     .line_prepare(prep_high), .symbol_mode(mode_high), .packet_start(start_high)
   );
 
-  hdmi_line_slot_scheduler #(
-    .H_TOTAL(H_TOTAL), .H_ACTIVE_SIZE(H_ACTIVE), .H_SYNC_START(H_SYNC_START),
-    .HSYNC_ACTIVE_LEVEL(1'b0), .VIDEO_LOOKAHEAD_CYCLES(10)
-  ) dut_low (
+  hdmi_line_slot_scheduler #(.VIDEO_LOOKAHEAD_CYCLES(10)) dut_low (
     .pixel_clk(pixel_clk), .aresetn(aresetn),
-    .hdmi_mode_request(hdmi_mode_request), .hdmi_mode_active(hdmi_mode_active_low),
+    .h_total(H_TOTAL), .h_active_size(H_ACTIVE), .h_sync_start(H_SYNC_START),
+    .hsync_active_level(1'b0),
+    .hdmi_mode_request(hdmi_mode_request), .video_profile_valid(1'b1),
+    .hdmi_mode_active(hdmi_mode_active_low),
     .packet_active(packet_active),
     .video_de_lookahead(raw_de), .video_de_delayed(delayed_de),
     .hsync_delayed(hsync_low), .packet_loaded(packet_loaded),

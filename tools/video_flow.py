@@ -67,23 +67,35 @@ SIM_HDL_FILES = (
     "hdmi_tmds_mode_mux.sv",
     "hdmi_tmds_symbol_encoder.sv",
     "hdmi_tmds_video_encoder.sv",
+    "hdmi_mode_transition_ctrl.sv",
+    "hdmi_video_timing_gen.sv",
+    "hdmi_clock_profile_mux.sv",
 )
-SIM_VHDL_FILES = ("DVI_Constants.vhd", "TMDS_Encoder.vhd", "OutputSERDES.vhd")
 SIM_RTL_TEST_FILES = (
     "tb_axis_video_nn_scaler.sv",
+    "tb_axis_video_nn_scaler_output_dims.sv",
+    "tb_axis_video_nn_scaler_native_input.sv",
     "tb_video_bram_rgb565_reader.sv",
     "tb_video_pipeline_v1_0.sv",
+    "tb_video_pipeline_output_mode.sv",
     "tb_video_pipeline_static_profile.sv",
     "tb_hdmi_runtime_status.sv",
     "tb_hdmi_gain_bus_cdc.sv",
+    "tb_hdmi_mode_transition_ctrl.sv",
+    "tb_hdmi_boot_timing_path.sv",
+    "tb_hdmi_video_timing_gen.sv",
+    "tb_hdmi_clock_profile_mux.sv",
     "tb_hdmi_primitives.sv",
     "tb_hdmi_audio_packets.sv",
     "tb_audio_pcm_async_fifo.sv",
     "tb_hdmi_packet_assembler.sv",
     "tb_hdmi_line_slot_scheduler.sv",
     "tb_hdmi_tmds_mode_mux.sv",
-    "tb_hdmi_digilent_video_encoder.sv",
+    "tb_hdmi_video_encoder.sv",
+    "tb_hdmi_color_avi_infoframe.sv",
+    "tb_hdmi_7series_output_serdes.sv",
     "tb_hdmi_pcm_packet_source.sv",
+    "tb_hdmi_pcm_profile_rates.sv",
     "tb_embedded_video_ip_7series_tx.sv",
 )
 SIM_SOFTWARE_FILES = (
@@ -101,19 +113,30 @@ SIM_LINE_START_BMP_REL = Path("out/tests/tb_embedded_video_ip_7series_tx/hdmi_tx
 SIM_TEST_LOG_RELS = (
     Path("out/tests/tb_axis_video_nn_scaler/run.log"),
     Path("out/tests/tb_axis_video_nn_scaler_bram/run.log"),
+    Path("out/tests/tb_axis_video_nn_scaler_output_dims/run.log"),
+    Path("out/tests/tb_axis_video_nn_scaler_native_input/run.log"),
+    Path("out/tests/tb_axis_video_nn_scaler_native_input_bram/run.log"),
     Path("out/tests/tb_video_bram_rgb565_reader/run.log"),
     Path("out/tests/tb_video_pipeline_v1_0/run.log"),
+    Path("out/tests/tb_video_pipeline_output_mode/run.log"),
     Path("out/tests/tb_video_pipeline_static_profile/run.log"),
     Path("out/tests/tb_hdmi_runtime_status/run.log"),
     Path("out/tests/tb_hdmi_gain_bus_cdc/run.log"),
+    Path("out/tests/tb_hdmi_mode_transition_ctrl/run.log"),
+    Path("out/tests/tb_hdmi_boot_timing_path/run.log"),
+    Path("out/tests/tb_hdmi_video_timing_gen/run.log"),
+    Path("out/tests/tb_hdmi_clock_profile_mux/run.log"),
     Path("out/tests/tb_hdmi_primitives/run.log"),
     Path("out/tests/tb_hdmi_audio_packets/run.log"),
     Path("out/tests/tb_audio_pcm_async_fifo/run.log"),
     Path("out/tests/tb_hdmi_packet_assembler/run.log"),
     Path("out/tests/tb_hdmi_line_slot_scheduler/run.log"),
     Path("out/tests/tb_hdmi_tmds_mode_mux/run.log"),
-    Path("out/tests/tb_hdmi_digilent_video_encoder/run.log"),
+    Path("out/tests/tb_hdmi_video_encoder/run.log"),
+    Path("out/tests/tb_hdmi_color_avi_infoframe/run.log"),
+    Path("out/tests/tb_hdmi_7series_output_serdes/run.log"),
     Path("out/tests/tb_hdmi_pcm_packet_source/run.log"),
+    Path("out/tests/tb_hdmi_pcm_profile_rates/run.log"),
     Path("out/tests/tb_embedded_video_ip_7series_tx/run.log"),
 )
 SYNTH_REPORT_NAMES = ("utilization.rpt", "timing_summary.rpt", "qor.json")
@@ -235,17 +258,12 @@ def stage_input_paths(stage: str, root: Path = ROOT,
                       profile: str | None = None) -> list[Path]:
     """选择会影响当前构建阶段的文件。"""
     hdl_dir = root / "ip/video_pipeline_1_0/hdl"
-    third_party_dir = root / "third_party/digilent-rgb2dvi"
     common = [root / "tools/video_flow.py"]
 
     if stage == "package":
         package_hdl = [
             path for path in _tree_files(hdl_dir)
             if path.suffix.lower() in {".sv", ".v"}
-        ]
-        third_party_sources = [
-            path for path in _tree_files(third_party_dir)
-            if path.suffix.lower() in {".vhd", ".md"}
         ]
         paths = [
             *common,
@@ -255,9 +273,8 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
             root / "dependencies.lock.json",
             root / "VERSION",
-            root / "NOTICE.md",
             *package_hdl,
-            *third_party_sources,
+            *_tree_files(root / "ip_repo/if"),
         ]
     elif stage == "ip_catalog":
         package_roots = [
@@ -269,6 +286,7 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             if not (package_root / "component.xml").is_file():
                 raise FlowError(f"Packaged IP is missing; run the package stage first: {package_root}")
             package_files.extend(_tree_files(package_root))
+        package_files.extend(_tree_files(root / "ip_repo/if"))
         paths = [*common, root / "tools/validate_ip_catalog.tcl", *package_files]
     elif stage == "sim":
         paths = [
@@ -280,7 +298,6 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             root / "VERSION",
             *(hdl_dir / name for name in SIM_HDL_FILES),
             *(root / "tests/rtl" / name for name in SIM_RTL_TEST_FILES),
-            *(root / "third_party/digilent-rgb2dvi" / name for name in SIM_VHDL_FILES),
             root / "dependencies.lock.json",
             *(root / "software" / name for name in SIM_SOFTWARE_FILES),
         ]
@@ -412,7 +429,7 @@ def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
     if name == "package":
         core_root = root / "ip_repo/panfpga/video_pipeline"
         composite_root = root / "ip_repo/panfpga/embedded_video_ip"
-        paths = [*_tree_files(core_root), *_tree_files(composite_root)]
+        paths = [*_tree_files(core_root), *_tree_files(composite_root), *_tree_files(root / "ip_repo/if")]
         if not (core_root / "component.xml").is_file():
             raise FlowError(f"Internal video IP is missing: {core_root / 'component.xml'}")
         if not (composite_root / "component.xml").is_file():

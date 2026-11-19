@@ -17,7 +17,8 @@ module video_pipeline_v1_0_wrapper #(
   parameter integer MAX_SCALER_INPUT_HEIGHT = MAX_INPUT_HEIGHT,
   parameter integer ENABLE_SCALER = 1,
   parameter integer LINE_BUFFER_IMPLEMENTATION = 0,
-  parameter integer ENABLE_HDMI_AUDIO = 0
+  parameter integer ENABLE_HDMI_AUDIO = 0,
+  parameter integer ENABLE_OUTPUT_MODE = 0
 ) (
   input wire aclk,
   input wire aresetn,
@@ -65,6 +66,9 @@ module video_pipeline_v1_0_wrapper #(
   input wire audio_underflow,
   input wire audio_overflow
 );
+  wire [1:0] video_mode_request_unused;
+  wire video_mode_commit_unused;
+  wire video_mode_error_clear_unused;
   video_pipeline_v1_0 #(
     .MAX_INPUT_WIDTH(MAX_INPUT_WIDTH),
     .MAX_INPUT_HEIGHT(MAX_INPUT_HEIGHT),
@@ -83,7 +87,8 @@ module video_pipeline_v1_0_wrapper #(
     .MAX_SCALER_INPUT_HEIGHT(MAX_SCALER_INPUT_HEIGHT),
     .ENABLE_SCALER(ENABLE_SCALER),
     .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION),
-    .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO)
+    .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO),
+    .ENABLE_OUTPUT_MODE(ENABLE_OUTPUT_MODE)
   ) core (
     .aclk(aclk), .aresetn(aresetn),
     .bram_en(bram_en), .bram_addr(bram_addr), .bram_dout(bram_dout),
@@ -107,6 +112,12 @@ module video_pipeline_v1_0_wrapper #(
     .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode),
     .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
     .audio_underflow(audio_underflow),
-    .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000)
+    .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000),
+    .video_mode_request(video_mode_request_unused),
+    .video_mode_commit(video_mode_commit_unused),
+    .video_mode_error_clear(video_mode_error_clear_unused),
+    .video_mode_active(2'b00), .video_mode_busy(1'b0),
+    .video_mode_pixel_reset_hold(1'b0), .video_mode_error(1'b0),
+    .video_mode_config_ready()
   );
 endmodule

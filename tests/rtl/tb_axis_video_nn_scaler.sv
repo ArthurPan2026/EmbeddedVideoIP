@@ -6,10 +6,11 @@ module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATI
 
   logic [15:0] cfg_width = 16'd2;
   logic [15:0] cfg_height = 16'd2;
-  logic [9:0] cfg_active_width=4, cfg_active_height=4;
-  logic [9:0] cfg_x_offset=0, cfg_y_offset=0;
-  logic [9:0] cfg_source_x_origin=0, cfg_source_y_origin=0;
-  logic [9:0] cfg_x_step=0, cfg_x_rem=2, cfg_y_step=0, cfg_y_rem=2;
+  logic [10:0] cfg_output_width=4, cfg_output_height=4;
+  logic [10:0] cfg_active_width=4, cfg_active_height=4;
+  logic [10:0] cfg_x_offset=0, cfg_y_offset=0;
+  logic [10:0] cfg_source_x_origin=0, cfg_source_y_origin=0;
+  logic [10:0] cfg_x_step=0, cfg_x_rem=2, cfg_y_step=0, cfg_y_rem=2;
   logic clear_errors = 1'b0;
   logic [23:0] s_data = 24'd0;
   logic s_valid = 1'b0;
@@ -24,8 +25,8 @@ module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATI
   wire busy;
   wire [31:0] frame_count;
   wire [31:0] error_flags;
-  wire [9:0] active_width;
-  wire [9:0] active_height;
+  wire [10:0] active_width;
+  wire [10:0] active_height;
 
   logic [23:0] expected [0:16];
   integer output_index = 0;
@@ -37,12 +38,13 @@ module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATI
 
   axis_video_nn_scaler #(
     .MAX_INPUT_WIDTH(4), .MAX_INPUT_HEIGHT(4),
-    .OUTPUT_WIDTH(4), .OUTPUT_HEIGHT(4),
+    .OUTPUT_WIDTH(1920), .OUTPUT_HEIGHT(1080),
     .MAX_BUFFER_WIDTH(2), .MAX_BUFFER_HEIGHT(2),
     .LINE_BUFFER_IMPLEMENTATION(LINE_BUFFER_IMPLEMENTATION)
   ) dut (
     .aclk(clk), .aresetn(rst_n),
     .cfg_width(cfg_width), .cfg_height(cfg_height),
+    .cfg_output_width(cfg_output_width), .cfg_output_height(cfg_output_height),
     .cfg_active_width(cfg_active_width), .cfg_active_height(cfg_active_height),
     .cfg_x_offset(cfg_x_offset), .cfg_y_offset(cfg_y_offset),
     .cfg_source_x_origin(cfg_source_x_origin), .cfg_source_y_origin(cfg_source_y_origin),
@@ -218,7 +220,7 @@ module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATI
     cfg_x_offset=0; cfg_y_offset=0;
     cfg_source_x_origin=0; cfg_source_y_origin=0;
     cfg_x_step=1; cfg_x_rem=0; cfg_y_step=1; cfg_y_rem=0;
-    #1;
+    @(posedge clk); #1;
     expected[0]=24'h010000; expected[1]=24'h010001; expected[2]=24'h010002; expected[3]=24'h010003;
     expected[4]=24'h010004; expected[5]=24'h010005; expected[6]=24'h010006; expected[7]=24'h010007;
     expected[8]=24'h010008; expected[9]=24'h010009; expected[10]=24'h01000a; expected[11]=24'h01000b;
@@ -240,7 +242,7 @@ module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATI
     cfg_x_offset=1; cfg_y_offset=1;
     cfg_source_x_origin=0; cfg_source_y_origin=0;
     cfg_x_step=2; cfg_x_rem=0; cfg_y_step=1; cfg_y_rem=0;
-    #1;
+    @(posedge clk); #1;
     if (dut.cfg_bypass_1to1 || !dut.cfg_invalid_geometry)
       $fatal(1, "TEST_FAIL: scaled geometry over buffer limit was not rejected");
     send_pixel(24'h123456, 1'b1, 1'b0);
@@ -268,7 +270,7 @@ module tb_axis_video_nn_scaler #(parameter int unsigned LINE_BUFFER_IMPLEMENTATI
     cfg_x_offset=0; cfg_y_offset=0;
     cfg_source_x_origin=0; cfg_source_y_origin=0;
     cfg_x_step=1; cfg_x_rem=0; cfg_y_step=1; cfg_y_rem=0;
-    #1;
+    @(posedge clk); #1;
     if (!dut.cfg_bypass_1to1 || dut.cfg_invalid_geometry)
       $fatal(1, "TEST_FAIL: recovery test did not configure direct mode");
     send_partial_then_recover();

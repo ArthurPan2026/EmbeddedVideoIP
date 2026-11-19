@@ -15,11 +15,12 @@ module axis_video_nn_scaler #(
 ) (
   input logic aclk, input logic aresetn,
   input logic [15:0] cfg_width, input logic [15:0] cfg_height,
-  input logic [9:0] cfg_active_width, input logic [9:0] cfg_active_height,
-  input logic [9:0] cfg_x_offset, input logic [9:0] cfg_y_offset,
-  input logic [9:0] cfg_source_x_origin, input logic [9:0] cfg_source_y_origin,
-  input logic [9:0] cfg_x_step, input logic [9:0] cfg_x_rem,
-  input logic [9:0] cfg_y_step, input logic [9:0] cfg_y_rem,
+  input logic [10:0] cfg_output_width, input logic [10:0] cfg_output_height,
+  input logic [10:0] cfg_active_width, input logic [10:0] cfg_active_height,
+  input logic [10:0] cfg_x_offset, input logic [10:0] cfg_y_offset,
+  input logic [10:0] cfg_source_x_origin, input logic [10:0] cfg_source_y_origin,
+  input logic [10:0] cfg_x_step, input logic [10:0] cfg_x_rem,
+  input logic [10:0] cfg_y_step, input logic [10:0] cfg_y_rem,
   input logic clear_errors,
   input logic [23:0] s_axis_tdata, input logic s_axis_tvalid,
   output logic s_axis_tready, input logic s_axis_tuser, input logic s_axis_tlast,
@@ -27,7 +28,7 @@ module axis_video_nn_scaler #(
   input logic m_axis_tready, output logic m_axis_tuser, output logic m_axis_tlast,
   output logic busy, output logic [31:0] frame_count,
   output logic [31:0] error_flags,
-  output logic [9:0] active_width, output logic [9:0] active_height
+  output logic [10:0] active_width, output logic [10:0] active_height
 );
   typedef enum logic [3:0] {
     ST_WAIT_SOF, ST_CAPTURE, ST_LINE_READY, ST_PAD_TOP,
@@ -35,43 +36,58 @@ module axis_video_nn_scaler #(
   } state_t;
   state_t state;
   logic line_buf_wr_en, cfg_invalid_geometry, cfg_bypass_1to1;
-  logic [9:0] line_buf_wr_addr;
+  logic cfg_invalid_geometry_comb, cfg_bypass_1to1_comb;
+  logic [10:0] line_buf_wr_addr;
   logic line_buf_read_issue, line_buf_read_valid, line_buf_read_pop;
-  logic [9:0] line_buf_read_addr;
+  logic [10:0] line_buf_read_addr;
   logic [23:0] line_buf_read_data;
   logic line_buf_pixel_needed;
   logic bypass_start, bypass_active_beat, bypass_beat;
-  logic [9:0] in_width, in_height, cap_x, cap_y;
-  logic [9:0] x_offset, y_offset, emit_x, out_y_total, active_y_count;
-  logic [9:0] pad_top_left, pad_bottom_left;
+  logic [10:0] in_width, in_height, cap_x, cap_y;
+  logic [10:0] x_offset, y_offset, emit_x, out_y_total, active_y_count;
+  logic [10:0] pad_top_left, pad_bottom_left;
   logic top_emitted;
-  logic [9:0] source_x, source_y, source_x_origin;
-  logic [9:0] x_step, x_rem, y_step, y_rem;
-  logic [10:0] x_error, y_error, x_error_sum, y_error_sum;
-  logic [9:0] next_source_x, next_source_y;
+  logic [10:0] source_x, source_y, source_x_origin;
+  logic [10:0] x_step, x_rem, y_step, y_rem;
+  logic [10:0] x_error, y_error;
+  logic [11:0] x_error_sum, y_error_sum;
+  logic [10:0] next_source_x, next_source_y;
   logic [10:0] next_y_error;
   logic in_handshake;
 
+  always_ff @(posedge aclk) begin
+    if (!aresetn) begin
+      cfg_invalid_geometry <= 1'b1;
+      cfg_bypass_1to1 <= 1'b0;
+    end else begin
+      cfg_invalid_geometry <= cfg_invalid_geometry_comb;
+      cfg_bypass_1to1 <= cfg_bypass_1to1_comb;
+    end
+  end
+
   always_comb begin
-    cfg_bypass_1to1 = (cfg_width == OUTPUT_WIDTH) &&
-                      (cfg_height == OUTPUT_HEIGHT) &&
-                      (cfg_active_width == cfg_width) &&
-                      (cfg_active_height == cfg_height) &&
-                      (cfg_x_offset == 0) && (cfg_y_offset == 0) &&
-                      (cfg_source_x_origin == 0) && (cfg_source_y_origin == 0) &&
-                      (cfg_x_step == 10'd1) && (cfg_x_rem == 0) &&
-                      (cfg_y_step == 10'd1) && (cfg_y_rem == 0);
-    cfg_invalid_geometry = (cfg_width == 0) || (cfg_height == 0) ||
+    cfg_bypass_1to1_comb = (cfg_width == cfg_output_width) &&
+                           (cfg_height == cfg_output_height) &&
+                           (cfg_active_width == cfg_width) &&
+                           (cfg_active_height == cfg_height) &&
+                           (cfg_x_offset == 0) && (cfg_y_offset == 0) &&
+                           (cfg_source_x_origin == 0) && (cfg_source_y_origin == 0) &&
+                           (cfg_x_step == 11'd1) && (cfg_x_rem == 0) &&
+                           (cfg_y_step == 11'd1) && (cfg_y_rem == 0);
+    cfg_invalid_geometry_comb = (cfg_width == 0) || (cfg_height == 0) ||
+                          (cfg_output_width == 0) || (cfg_output_height == 0) ||
+                          (cfg_output_width > OUTPUT_WIDTH) ||
+                          (cfg_output_height > OUTPUT_HEIGHT) ||
                           (cfg_width > MAX_INPUT_WIDTH) ||
                           (cfg_height > MAX_INPUT_HEIGHT) ||
-                          (!cfg_bypass_1to1 &&
+                          (!cfg_bypass_1to1_comb &&
                            ((cfg_width > MAX_BUFFER_WIDTH) ||
                             (cfg_height > MAX_BUFFER_HEIGHT))) ||
                           (cfg_active_width == 0) || (cfg_active_height == 0) ||
-                          (cfg_active_width > OUTPUT_WIDTH) ||
-                          (cfg_active_height > OUTPUT_HEIGHT) ||
-                          ((cfg_x_offset + cfg_active_width) > OUTPUT_WIDTH) ||
-                          ((cfg_y_offset + cfg_active_height) > OUTPUT_HEIGHT) ||
+                          (cfg_active_width > cfg_output_width) ||
+                          (cfg_active_height > cfg_output_height) ||
+                          ((cfg_x_offset + cfg_active_width) > cfg_output_width) ||
+                          ((cfg_y_offset + cfg_active_height) > cfg_output_height) ||
                           (cfg_source_x_origin >= cfg_width) ||
                           (cfg_source_y_origin >= cfg_height) ||
                           (cfg_x_rem >= cfg_active_width) ||
@@ -127,7 +143,7 @@ module axis_video_nn_scaler #(
     if ((LINE_BUFFER_IMPLEMENTATION == 1) && line_buf_pixel_needed)
       m_axis_tvalid = line_buf_read_valid;
     m_axis_tuser = m_axis_tvalid && (out_y_total == 0) && (emit_x == 0);
-    m_axis_tlast = m_axis_tvalid && (emit_x == OUTPUT_WIDTH-1);
+    m_axis_tlast = m_axis_tvalid && (emit_x == cfg_output_width-1'b1);
     m_axis_tdata = 24'd0;
     if (bypass_beat) begin
       m_axis_tdata = s_axis_tdata;
@@ -229,14 +245,14 @@ module axis_video_nn_scaler #(
                 error_flags[0] <= 1'b1;
                 state <= ST_DROP;
               end else begin
-                in_width <= cfg_width[9:0];
-                in_height <= cfg_height[9:0];
+                in_width <= cfg_width[10:0];
+                in_height <= cfg_height[10:0];
                 active_width <= cfg_active_width;
                 active_height <= cfg_active_height;
                 x_offset <= cfg_x_offset;
                 y_offset <= cfg_y_offset;
                 pad_top_left <= cfg_y_offset;
-                pad_bottom_left <= OUTPUT_HEIGHT - cfg_y_offset - cfg_active_height;
+                pad_bottom_left <= cfg_output_height - cfg_y_offset - cfg_active_height;
                 top_emitted <= 1'b0;
                 cap_x <= '0; cap_y <= '0;
                 emit_x <= '0; out_y_total <= '0; active_y_count <= '0;
@@ -349,7 +365,7 @@ module axis_video_nn_scaler #(
 
           ST_PAD_TOP: begin
             if (m_axis_tvalid && m_axis_tready) begin
-              if (emit_x == OUTPUT_WIDTH-1) begin
+              if (emit_x == cfg_output_width-1'b1) begin
                 emit_x <= '0;
                 out_y_total <= out_y_total + 1'b1;
                 if (pad_top_left <= 1) begin
@@ -376,7 +392,7 @@ module axis_video_nn_scaler #(
                 end
               end
 
-              if (emit_x == OUTPUT_WIDTH-1) begin
+              if (emit_x == cfg_output_width-1'b1) begin
                 emit_x <= '0;
                 out_y_total <= out_y_total + 1'b1;
                 active_y_count <= active_y_count + 1'b1;
@@ -435,7 +451,7 @@ module axis_video_nn_scaler #(
 
           ST_PAD_BOTTOM: begin
             if (m_axis_tvalid && m_axis_tready) begin
-              if (emit_x == OUTPUT_WIDTH-1) begin
+              if (emit_x == cfg_output_width-1'b1) begin
                 emit_x <= '0;
                 out_y_total <= out_y_total + 1'b1;
                 if (pad_bottom_left <= 1) begin

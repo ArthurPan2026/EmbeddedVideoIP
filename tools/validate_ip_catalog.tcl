@@ -12,12 +12,12 @@ if {[llength $definitions] != 1} { error "Catalog 中应只有一个 EmbeddedVid
 create_bd_design embedded_video_ip_catalog_validation
 create_bd_cell -type ip -vlnv panfpga.org:video:embedded_video_ip:1.0 embedded_video_ip_0
 set cell [get_bd_cells embedded_video_ip_0]
-foreach name {s_axi s_axis_vdma s_axis_hls s_axis_audio_pcm} {
+foreach name {s_axi s_axis_vdma s_axis_hls s_axis_audio_pcm tmds_tx} {
   set intf [get_bd_intf_pins -quiet $cell/$name]
   if {[llength $intf] != 1} { error "缺少必需的接口： $name" }
   make_bd_intf_pins_external $intf
 }
-foreach name {aclk aresetn hdmi_ref_clk audio_pcm_clk bram_en bram_addr bram_dout bram_busy bram_frame_done tmds_tx_clk_p tmds_tx_clk_n tmds_tx_data_p tmds_tx_data_n} {
+foreach name {aclk aresetn hdmi_ref_clk audio_pcm_clk bram_en bram_addr bram_dout bram_busy bram_frame_done} {
   set pin [get_bd_pins -quiet $cell/$name]
   if {[llength $pin] != 1} { error "缺少必需的端口： $name" }
   make_bd_pins_external $pin

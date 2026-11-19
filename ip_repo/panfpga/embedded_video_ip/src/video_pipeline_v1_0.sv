@@ -22,7 +22,8 @@ module video_pipeline_v1_0 #(
   parameter int unsigned ENABLE_SCALER = 1,
   // 0 uses LUTRAM for the scaler line store; 1 uses synchronous BRAM.
   parameter int unsigned LINE_BUFFER_IMPLEMENTATION = 0,
-  parameter int unsigned ENABLE_HDMI_AUDIO = 0
+  parameter int unsigned ENABLE_HDMI_AUDIO = 0,
+  parameter int unsigned ENABLE_OUTPUT_MODE = 0
 ) (
   input logic aclk, input logic aresetn,
 
@@ -79,7 +80,15 @@ module video_pipeline_v1_0 #(
   output logic [16:0] audio_gain_q15,
   input logic audio_underflow,
   input logic audio_overflow,
-  input logic [5:0] hdmi_diag_status
+  input logic [5:0] hdmi_diag_status,
+  output logic [1:0] video_mode_request,
+  output logic video_mode_commit,
+  output logic video_mode_error_clear,
+  input logic [1:0] video_mode_active,
+  input logic video_mode_busy,
+  input logic video_mode_pixel_reset_hold,
+  input logic video_mode_error,
+  output logic video_mode_config_ready
 );
   logic cfg_enable, cfg_scale, cfg_stretch;
   logic [1:0] cfg_source, cfg_format;
@@ -87,22 +96,27 @@ module video_pipeline_v1_0 #(
   logic [31:0] cfg_stride, cfg_bram_base;
   logic cfg_commit, bram_start, clear_errors;
   logic abort_stream, resume_stream, stream_hold, stream_resetn, stream_accept;
+  logic stream_config_settle;
   logic scaler_sready;
   logic [31:0] cfg_frame_count, cfg_error_flags;
-  logic [9:0] req_active_width, req_active_height;
-  logic [9:0] req_x_offset, req_y_offset, req_x_origin, req_y_origin;
-  logic [9:0] req_x_step, req_x_rem, req_y_step, req_y_rem;
-  logic [9:0] measured_active_width, measured_active_height;
+  logic [10:0] req_active_width, req_active_height;
+  logic [10:0] req_x_offset, req_y_offset;
+  logic [10:0] req_x_origin, req_y_origin;
+  logic [10:0] req_x_step, req_x_rem, req_y_step, req_y_rem;
+  logic [10:0] measured_active_width, measured_active_height;
+  logic [10:0] req_output_width, req_output_height;
+  logic [10:0] active_output_width, active_output_height;
   logic cfg_busy;
 
   logic active_enable, active_scale, active_stretch;
   logic [1:0] active_source, active_format;
   logic [15:0] active_width, active_height;
-  logic [9:0] active_active_width, active_active_height;
-  logic [9:0] active_x_offset, active_y_offset, active_x_origin, active_y_origin;
-  logic [9:0] active_x_step, active_x_rem, active_y_step, active_y_rem;
+  logic [10:0] active_active_width, active_active_height;
+  logic [10:0] active_x_offset, active_y_offset;
+  logic [10:0] active_x_origin, active_y_origin;
+  logic [10:0] active_x_step, active_x_rem, active_y_step, active_y_rem;
   logic [31:0] active_stride, active_bram_base;
-  logic cfg_pending;
+  logic cfg_pending, mode_cfg_pending;
 
   logic [31:0] bram_axis_tdata;
   logic bram_axis_tvalid, bram_axis_tready, bram_axis_tuser, bram_axis_tlast;
@@ -119,13 +133,15 @@ module video_pipeline_v1_0 #(
   logic [1:0] selected_source, selected_format;
   logic pass_busy;
   logic [31:0] pass_frame_count, pass_error_flags;
-  logic [9:0] pass_active_width, pass_active_height;
+  logic [10:0] pass_active_width, pass_active_height;
   logic [15:0] pass_line_index, pass_pixel_count;
   localparam logic [1:0] DEFAULT_ENABLED_SOURCE =
       (ENABLE_BRAM_SOURCE != 0) ? 2'd0 :
       (ENABLE_HLS_SOURCE != 0) ? 2'd1 : 2'd2;
 
-  axi_lite_video_regs #(.ADDR_WIDTH(AXI_ADDR_WIDTH), .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO)) u_regs (
+  axi_lite_video_regs #(.ADDR_WIDTH(AXI_ADDR_WIDTH),
+                         .ENABLE_HDMI_AUDIO(ENABLE_HDMI_AUDIO),
+                         .ENABLE_OUTPUT_MODE(ENABLE_OUTPUT_MODE)) u_regs (
     .aclk(aclk), .aresetn(aresetn),
     .s_axi_awaddr(s_axi_awaddr), .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
     .s_axi_wdata(s_axi_wdata), .s_axi_wstrb(s_axi_wstrb), .s_axi_wvalid(s_axi_wvalid), .s_axi_wready(s_axi_wready),
@@ -148,10 +164,34 @@ module video_pipeline_v1_0 #(
     .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode),
     .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
     .audio_underflow(audio_underflow),
-    .audio_overflow(audio_overflow), .hdmi_diag_status(hdmi_diag_status)
+    .audio_overflow(audio_overflow), .hdmi_diag_status(hdmi_diag_status),
+    .video_mode_request(video_mode_request), .video_mode_commit(video_mode_commit),
+    .video_mode_error_clear(video_mode_error_clear),
+    .video_mode_active(video_mode_active), .video_mode_busy(video_mode_busy),
+    .video_mode_error(video_mode_error)
   );
 
+  function automatic logic [10:0] output_width_for_mode(input logic [1:0] mode_value);
+    case (mode_value)
+      2'd0: output_width_for_mode = 11'd640;
+      2'd1: output_width_for_mode = 11'd1280;
+      2'd2: output_width_for_mode = 11'd1920;
+      default: output_width_for_mode = 11'd0;
+    endcase
+  endfunction
+
+  function automatic logic [10:0] output_height_for_mode(input logic [1:0] mode_value);
+    case (mode_value)
+      2'd0: output_height_for_mode = 11'd480;
+      2'd1: output_height_for_mode = 11'd720;
+      2'd2: output_height_for_mode = 11'd1080;
+      default: output_height_for_mode = 11'd0;
+    endcase
+  endfunction
+
   always_comb begin
+    req_output_width = (ENABLE_OUTPUT_MODE != 0) ? output_width_for_mode(video_mode_request) : 11'(OUTPUT_WIDTH);
+    req_output_height = (ENABLE_OUTPUT_MODE != 0) ? output_height_for_mode(video_mode_request) : 11'(OUTPUT_HEIGHT);
     case (cfg_source)
       2'd0: source_request_enabled = (ENABLE_BRAM_SOURCE != 0);
       2'd1: source_request_enabled = (ENABLE_HLS_SOURCE != 0);
@@ -160,14 +200,26 @@ module video_pipeline_v1_0 #(
     endcase
 
     invalid_profile_request = !source_request_enabled ||
+        (cfg_width == 0) || (cfg_height == 0) ||
+        (cfg_width > MAX_INPUT_WIDTH) || (cfg_height > MAX_INPUT_HEIGHT) ||
+        (req_output_width == 0) || (req_output_height == 0) ||
+        (req_output_width > OUTPUT_WIDTH) || (req_output_height > OUTPUT_HEIGHT) ||
+        (req_active_width == 0) || (req_active_height == 0) ||
+        (req_active_width > req_output_width) || (req_active_height > req_output_height) ||
+        ((req_x_offset + req_active_width) > req_output_width) ||
+        ((req_y_offset + req_active_height) > req_output_height) ||
+        (req_x_origin >= cfg_width) || (req_y_origin >= cfg_height) ||
+        (req_x_rem >= req_active_width) || (req_y_rem >= req_active_height) ||
+        (req_x_step > MAX_INPUT_WIDTH) || (req_y_step > MAX_INPUT_HEIGHT) ||
+        ((ENABLE_OUTPUT_MODE != 0) && (req_output_width == 0 || req_output_height == 0)) ||
         ((SOURCE_SELECT_MODE != 0) && (cfg_source != FIXED_SOURCE)) ||
         ((FORMAT_SELECT_MODE != 0) && (cfg_source != 2'd0) &&
          (cfg_format != FIXED_FORMAT));
     if (ENABLE_SCALER == 0) begin
       // A scaler-free profile only accepts an exact output-sized 1:1 frame.
       invalid_profile_request = invalid_profile_request ||
-          (cfg_width != OUTPUT_WIDTH) || (cfg_height != OUTPUT_HEIGHT) ||
-          (req_active_width != OUTPUT_WIDTH) || (req_active_height != OUTPUT_HEIGHT) ||
+          (cfg_width != req_output_width) || (cfg_height != req_output_height) ||
+          (req_active_width != req_output_width) || (req_active_height != req_output_height) ||
           (req_x_offset != 0) || (req_y_offset != 0) ||
           (req_x_origin != 0) || (req_y_origin != 0) ||
           (req_x_step != 1) || (req_x_rem != 0) ||
@@ -176,7 +228,11 @@ module video_pipeline_v1_0 #(
   end
 
   assign stream_resetn = aresetn && !abort_stream;
-  assign stream_accept = !stream_hold && !abort_stream;
+  assign stream_accept = !stream_hold && !abort_stream && !stream_config_settle &&
+                         !((ENABLE_OUTPUT_MODE != 0) && video_mode_pixel_reset_hold);
+  assign video_mode_config_ready = (ENABLE_OUTPUT_MODE == 0) ||
+      (!cfg_pending && !cfg_busy && !invalid_profile_request &&
+       (active_output_width == req_output_width) && (active_output_height == req_output_height));
   assign selected_source = (SOURCE_SELECT_MODE != 0) ? FIXED_SOURCE : active_source;
   // BRAM RGB565 is expanded by its reader; other sources use the configured format.
   assign selected_format = (selected_source == 2'd0) ? 2'd2 :
@@ -193,30 +249,40 @@ module video_pipeline_v1_0 #(
       active_height <= 16'd240;
       active_stride <= 32'd640;
       active_bram_base <= 32'd0;
-      active_active_width <= 10'd320; active_active_height <= 10'd240;
-      active_x_offset <= 10'd160; active_y_offset <= 10'd120;
+      active_active_width <= 11'd320; active_active_height <= 11'd240;
+      active_x_offset <= 11'd160; active_y_offset <= 11'd120;
+      active_output_width <= 11'd640; active_output_height <= 11'd480;
       active_x_origin <= '0; active_y_origin <= '0;
       active_x_step <= 10'd1; active_x_rem <= '0;
       active_y_step <= 10'd1; active_y_rem <= '0;
       cfg_pending <= 1'b0;
+      mode_cfg_pending <= 1'b0;
       stream_hold <= 1'b0;
+      stream_config_settle <= 1'b0;
       invalid_profile_error <= 1'b0;
     end else begin
+      stream_config_settle <= cfg_commit || cfg_pending || mode_cfg_pending || video_mode_commit;
       if (abort_stream)
         stream_hold <= 1'b1;
       else if (resume_stream)
         stream_hold <= 1'b0;
       if (clear_errors)
         invalid_profile_error <= 1'b0;
-      if (cfg_commit)
+      if (cfg_commit) begin
         cfg_pending <= 1'b1;
-      if ((cfg_commit || cfg_pending) && !cfg_busy) begin
+        if ((ENABLE_OUTPUT_MODE != 0) && video_mode_commit)
+          mode_cfg_pending <= 1'b1;
+      end
+      if ((cfg_commit || cfg_pending) && !cfg_busy &&
+          (((ENABLE_OUTPUT_MODE == 0) || (!mode_cfg_pending && !video_mode_commit)) ||
+           video_mode_pixel_reset_hold || invalid_profile_request)) begin
         if (invalid_profile_request) begin
           // Reject unsupported mode/geometry changes and stop output until
           // software submits a valid configuration. ERROR_FLAGS[4] is sticky.
           active_enable <= 1'b0;
           invalid_profile_error <= 1'b1;
           cfg_pending <= 1'b0;
+          mode_cfg_pending <= 1'b0;
         end else begin
           active_enable <= cfg_enable;
           active_source <= (SOURCE_SELECT_MODE != 0) ? FIXED_SOURCE : cfg_source;
@@ -229,10 +295,12 @@ module video_pipeline_v1_0 #(
           active_bram_base <= cfg_bram_base;
           active_active_width <= req_active_width; active_active_height <= req_active_height;
           active_x_offset <= req_x_offset; active_y_offset <= req_y_offset;
+          active_output_width <= req_output_width; active_output_height <= req_output_height;
           active_x_origin <= req_x_origin; active_y_origin <= req_y_origin;
           active_x_step <= req_x_step; active_x_rem <= req_x_rem;
           active_y_step <= req_y_step; active_y_rem <= req_y_rem;
           cfg_pending <= 1'b0;
+          mode_cfg_pending <= 1'b0;
           stream_hold <= 1'b0;
         end
       end
@@ -363,7 +431,7 @@ module video_pipeline_v1_0 #(
   endgenerate
 
   axis_rgb888 u_format (
-    .s_axis_tdata(mux_tdata), .s_axis_tvalid(mux_tvalid && active_enable),
+    .s_axis_tdata(mux_tdata), .s_axis_tvalid(mux_tvalid && active_enable && stream_accept),
     .s_axis_tready(rgb_source_ready), .s_axis_tuser(mux_tuser), .s_axis_tlast(mux_tlast),
     // The BRAM reader already yields internal RGB; HLS/VDMA use the
     // configured source format (RGB AXI video input is RBG packed).
@@ -374,7 +442,7 @@ module video_pipeline_v1_0 #(
   assign mux_tready = active_enable && rgb_source_ready && stream_accept;
 
   // Keep RGB internally, then emit the AMD AXI4-Stream Video RGB packing:
-  // R in [23:16], B in [15:8], G in [7:0]. Digilent rgb2dvi also consumes RBG.
+  // R in [23:16], B in [15:8], G in [7:0]. The TMDS serializer consumes RBG.
   assign m_axis_video_tdata = {scaler_tdata_rgb[23:16],
                                scaler_tdata_rgb[7:0],
                                scaler_tdata_rgb[15:8]};
@@ -382,6 +450,8 @@ module video_pipeline_v1_0 #(
   generate
     if (ENABLE_SCALER != 0) begin : gen_scaler
       axis_video_nn_scaler #(
+        .MAX_INPUT_WIDTH(MAX_INPUT_WIDTH),
+        .MAX_INPUT_HEIGHT(MAX_INPUT_HEIGHT),
         .MAX_BUFFER_WIDTH(MAX_SCALER_INPUT_WIDTH),
         .MAX_BUFFER_HEIGHT(MAX_SCALER_INPUT_HEIGHT),
         .OUTPUT_WIDTH(OUTPUT_WIDTH), .OUTPUT_HEIGHT(OUTPUT_HEIGHT),
@@ -389,6 +459,7 @@ module video_pipeline_v1_0 #(
       ) u_scaler (
         .aclk(aclk), .aresetn(stream_resetn),
         .cfg_width(active_width), .cfg_height(active_height),
+        .cfg_output_width(active_output_width), .cfg_output_height(active_output_height),
         .cfg_active_width(active_active_width), .cfg_active_height(active_active_height),
         .cfg_x_offset(active_x_offset), .cfg_y_offset(active_y_offset),
         .cfg_source_x_origin(active_x_origin), .cfg_source_y_origin(active_y_origin),
@@ -422,8 +493,8 @@ module video_pipeline_v1_0 #(
           pass_busy <= 1'b0;
           pass_frame_count <= 32'd0;
           pass_error_flags <= 32'd0;
-          pass_active_width <= 10'd0;
-          pass_active_height <= 10'd0;
+          pass_active_width <= 11'd0;
+          pass_active_height <= 11'd0;
           pass_line_index <= 16'd0;
           pass_pixel_count <= 16'd0;
         end else begin
