@@ -11,8 +11,10 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 from typing import Iterable
 
 from rtl_manifest import RTLBench, RTLManifestError, load_rtl_manifest
@@ -49,16 +51,33 @@ def _fingerprint(bench: RTLBench, vivado_bin: Path, tool_version: str) -> str:
 
 def run_checked(command: list[str], cwd: Path, log, timeout_seconds: int | None) -> None:
     print("[VIDEO-RUN] " + " ".join(command), flush=True)
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=timeout_seconds,
-    )
-    if result.returncode:
-        raise RuntimeError(f"command failed ({result.returncode}): {' '.join(command)}")
+    proc = subprocess.Popen(command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
+                            start_new_session=(os.name == "posix"))
+    try:
+        code = proc.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        if os.name == "posix":
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        else:
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            if os.name == "posix":
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                proc.kill()
+            proc.wait()
+        raise RuntimeError(f"command timed out after {timeout_seconds}s: {' '.join(command)}") from exc
+    if code:
+        raise RuntimeError(f"command failed ({code}): {' '.join(command)}")
 
 
 def _success_marker(output: str, bench: RTLBench) -> str | None:
@@ -113,50 +132,58 @@ def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: s
     for artifact in bench.artifacts:
         (run_dir / artifact).unlink(missing_ok=True)
     try:
-        with log_path.open("w", encoding="utf-8") as log:
-            for vhdl, group in groupby(bench.sources, key=lambda source: Path(source).suffix.lower() in {".vhd", ".vhdl"}):
-                command = [str(vivado_bin / ("xvhdl" if vhdl else "xvlog"))]
-                if not vhdl:
-                    for define in bench.defines:
-                        command.extend(["-d", define])
-                    command.append("-sv")
-                command.extend(["-work", "work", *(str(ROOT / source) for source in group)])
-                run_checked(command, run_dir, log, bench.timeout_seconds or 900)
-            run_checked(
-                [
-                    str(vivado_bin / "xelab"),
-                    f"work.{bench.top}",
-                    "-L",
-                    "work",
-                    "-L",
-                    "unisim",
-                    "-s",
-                    f"{bench.name}_snapshot",
-                ],
-                run_dir,
-                log,
-                bench.timeout_seconds or 900,
-            )
-            run_checked(
-                [str(vivado_bin / "xsim"), f"{bench.name}_snapshot", "-runall"],
-                run_dir,
-                log,
-                bench.timeout_seconds or 900,
-            )
-        output = log_path.read_text(encoding="utf-8", errors="replace")
-        if _has_failure(output):
-            raise RuntimeError(f"{bench.name} reported a simulation failure; see {log_path}")
-        marker = _success_marker(output, bench)
-        if marker is None:
-            raise RuntimeError(
-                f"{bench.name} did not report one of the pass markers: "
-                + ", ".join(bench.success_markers)
-            )
-        outputs = [log_path, *(run_dir / name for name in bench.artifacts)]
-        if any(path.is_symlink() or not path.is_file() for path in outputs):
-            raise RuntimeError(f"{bench.name} did not produce every declared artifact")
-        if _fingerprint(bench, vivado_bin, tool_version) != fingerprint:
-            raise RuntimeError(f"{bench.name} inputs changed during simulation")
+        with tempfile.TemporaryDirectory(prefix=".work-", dir=run_dir) as temporary:
+            workspace = Path(temporary)
+            with log_path.open("w", encoding="utf-8") as log:
+                for vhdl, group in groupby(bench.sources, key=lambda source: Path(source).suffix.lower() in {".vhd", ".vhdl"}):
+                    command = [str(vivado_bin / ("xvhdl" if vhdl else "xvlog"))]
+                    if not vhdl:
+                        for define in bench.defines:
+                            command.extend(["-d", define])
+                        command.append("-sv")
+                    command.extend(["-work", "work", *(str(ROOT / source) for source in group)])
+                    run_checked(command, workspace, log, bench.timeout_seconds or 900)
+                run_checked(
+                    [
+                        str(vivado_bin / "xelab"),
+                        f"work.{bench.top}",
+                        "-L",
+                        "work",
+                        "-L",
+                        "unisim",
+                        "-s",
+                        f"{bench.name}_snapshot",
+                    ],
+                    workspace,
+                    log,
+                    bench.timeout_seconds or 900,
+                )
+                run_checked(
+                    [str(vivado_bin / "xsim"), f"{bench.name}_snapshot", "-runall"],
+                    workspace,
+                    log,
+                    bench.timeout_seconds or 900,
+                )
+            output = log_path.read_text(encoding="utf-8", errors="replace")
+            if _has_failure(output):
+                raise RuntimeError(f"{bench.name} reported a simulation failure; see {log_path}")
+            marker = _success_marker(output, bench)
+            if marker is None:
+                raise RuntimeError(
+                    f"{bench.name} did not report one of the pass markers: "
+                    + ", ".join(bench.success_markers)
+                )
+            generated = [(workspace / name, run_dir / name) for name in bench.artifacts]
+            if any(source.is_symlink() or not source.is_file() for source, _ in generated):
+                raise RuntimeError(f"{bench.name} did not produce every declared artifact")
+            if _fingerprint(bench, vivado_bin, tool_version) != fingerprint:
+                raise RuntimeError(f"{bench.name} inputs changed during simulation")
+            for source, destination in generated:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.is_symlink():
+                    raise RuntimeError(f"refusing to replace linked artifact: {destination}")
+                os.replace(source, destination)
+            outputs = [log_path, *(destination for _, destination in generated)]
     except Exception as exc:
         _write_state(run_dir, {"name": bench.name, "fingerprint": fingerprint,
                                "status": "failed", "error": str(exc)})
