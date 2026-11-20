@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "sample_width_bits": 24,
+  "source_width_bits": 16,
+  "signed": true,
+  "left_channel": "TDATA[15:0]",
+  "right_channel": "TDATA[31:16]",
+  "alignment": "left",
+  "sample_rates_hz": [32000, 44100, 48000, 96000, 192000],
+  "handshake": "AXI4-Stream ready/valid with asynchronous FIFO backpressure",
+  "vectors": [
+    {"source_hex": "0x7fff", "expected_hex24": "0x7fff00"},
+    {"source_hex": "0x8000", "expected_hex24": "0x800000"},
+    {"source_hex": "0x0000", "expected_hex24": "0x000000"}
+  ],
+  "acr": {
+    "required": true,
+    "n_values": {
+      "32000": 4096,
+      "44100": 6272,
+      "48000": 6144,
+      "96000": 12288,
+      "192000": 24576
+    }
+  }
+}

@@ -43,6 +43,7 @@ SYNTH_HDL_FILES = (
     "axi_lite_video_regs.sv",
     "video_pipeline_v1_0.sv",
 )
+CONTRACT_FILES = ("contracts/video_contract.json", "contracts/pcm_contract.json")
 SIM_SOFTWARE_FILES = (
     "video_out.c",
     "video_out.h",
@@ -187,9 +188,11 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             root / "tools/package_all.tcl",
             root / "tools/package_ip.tcl",
             root / "tools/package_composite_ip.tcl",
+            root / "tools/generate_package_metadata.py",
             root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
             root / "dependencies.lock.json",
             root / "VERSION",
+            *(root / name for name in CONTRACT_FILES),
             *package_hdl,
             *_tree_files(root / "ip_repo/if"),
         ]
@@ -217,6 +220,7 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             root / "tests/host/test_install_ps_library.py",
             root / SIM_MANIFEST_REL,
             root / "VERSION",
+            *(root / name for name in CONTRACT_FILES),
             *bench_sources,
             root / "dependencies.lock.json",
             *(root / "software" / name for name in SIM_SOFTWARE_FILES),

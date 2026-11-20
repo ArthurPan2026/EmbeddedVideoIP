@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "max_input_width": 1280,
+  "max_input_height": 720,
+  "max_output_width": 1280,
+  "max_output_height": 720,
+  "input_format": "RGB565",
+  "output_format": "RGB888",
+  "stride_unit": "bytes",
+  "supported_vic": [4, 19, 31],
+  "scaler_mode": "nearest_neighbor",
+  "line_buffer_mode": {
+    "lutram": 0,
+    "bram": 1
+  },
+  "hdmi": {
+    "standard": "HDMI 1.4b",
+    "tmds_lanes": 3,
+    "audio_packet_sample_width_bits": 24
+  }
+}
