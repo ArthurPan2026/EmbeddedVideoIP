@@ -320,6 +320,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "tests/rtl/tb_hdmi_gain_bus_cdc.sv",
             "tests/rtl/tb_hdmi_primitives.sv",
             "tests/rtl/tb_hdmi_audio_packets.sv",
+            "tests/rtl/tb_hdmi_boot_timing_path.sv",
             "tests/rtl/tb_audio_pcm_async_fifo.sv",
             "tests/rtl/tb_hdmi_packet_assembler.sv",
             "tests/rtl/tb_hdmi_line_slot_scheduler.sv",
