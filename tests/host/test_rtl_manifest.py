@@ -34,7 +34,8 @@ class RTLManifestTests(unittest.TestCase):
         self.assertNotIn("tb_hdmi_pcm_profile_rates \\", runner_source)
         self.assertEqual(
             {path.relative_to(ROOT).as_posix() for path in manifest_output_paths(ROOT)},
-            {f"out/tests/{name}/run.log" for name in names},
+            {f"out/tests/{name}/run.log" for name in names}
+            | {f"out/tests/{bench.name}/{artifact}" for bench in benches for artifact in bench.artifacts},
         )
         sources = {path.relative_to(ROOT).as_posix() for path in manifest_source_paths(ROOT)}
         self.assertTrue(sources)

@@ -77,6 +77,7 @@ top = "tb_hdmi_clock_profile_mux"
 
 [[bench]]
 name = "tb_hdmi_primitives"
+iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_symbol_encoder.sv", "tests/rtl/tb_hdmi_primitives.sv"]
 top = "tb_hdmi_primitives"
 
@@ -87,26 +88,31 @@ top = "tb_hdmi_audio_packets"
 
 [[bench]]
 name = "tb_audio_pcm_async_fifo"
+iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "tests/rtl/tb_audio_pcm_async_fifo.sv"]
 top = "tb_audio_pcm_async_fifo"
 
 [[bench]]
 name = "tb_hdmi_packet_assembler"
+iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_packet_assembler.sv"]
 top = "tb_hdmi_packet_assembler"
 
 [[bench]]
 name = "tb_hdmi_line_slot_scheduler"
+iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "tests/rtl/tb_hdmi_line_slot_scheduler.sv"]
 top = "tb_hdmi_line_slot_scheduler"
 
 [[bench]]
 name = "tb_hdmi_tmds_mode_mux"
+iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "tests/rtl/tb_hdmi_tmds_mode_mux.sv"]
 top = "tb_hdmi_tmds_mode_mux"
 
 [[bench]]
 name = "tb_hdmi_video_encoder"
+iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "tests/rtl/tb_hdmi_video_encoder.sv"]
 top = "tb_hdmi_video_encoder"
 
@@ -133,5 +139,6 @@ top = "tb_hdmi_pcm_profile_rates"
 
 [[bench]]
 name = "tb_embedded_video_ip_7series_tx"
+artifacts = ["hdmi_tx_line_start.bmp"]
 sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv", "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "tests/rtl/tb_embedded_video_ip_7series_tx.sv"]
 top = "tb_embedded_video_ip_7series_tx"

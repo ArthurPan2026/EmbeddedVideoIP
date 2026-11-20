@@ -8,13 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any
 
 import tomllib
 
 
 SCHEMA_VERSION = 1
-DEFAULT_SUCCESS_MARKERS = ("TEST_PASS:", "BMP_PASS:")
+DEFAULT_SUCCESS_MARKERS = ("TEST_PASS:",)
 _ALLOWED_SUFFIXES = {".sv", ".v", ".vhd", ".vhdl"}
 
 
@@ -33,6 +34,7 @@ class RTLBench:
     timeout_seconds: int | None
     parallel: bool
     resources: tuple[str, ...]
+    artifacts: tuple[str, ...] = ()
     suite: str | None = None
 
 
@@ -41,7 +43,7 @@ def _safe_relative(value: object, where: str) -> str:
         raise RTLManifestError(f"{where} must be a non-empty string")
     text = value.strip().replace("\\", "/")
     path = Path(text)
-    if path.is_absolute() or ".." in path.parts or "\\x00" in text:
+    if path.is_absolute() or ".." in path.parts or "\x00" in text:
         raise RTLManifestError(f"{where} must be a project-relative path: {value!r}")
     return path.as_posix()
 
@@ -91,16 +93,17 @@ def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
         raise RTLManifestError("tests/rtl_manifest.toml must contain at least one [[bench]]")
     benches: list[RTLBench] = []
     names: set[str] = set()
+    outputs: set[str] = set()
     for index, item in enumerate(entries):
         where = f"bench[{index}]"
         if not isinstance(item, dict):
             raise RTLManifestError(f"{where} must be a TOML table")
         name = item.get("name")
-        if not isinstance(name, str) or not name.strip() or name in names:
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or name.casefold() in names:
             raise RTLManifestError(f"{where}.name is missing or duplicated: {name!r}")
         name = name.strip()
         top = item.get("top", name)
-        if not isinstance(top, str) or not top.strip():
+        if not isinstance(top, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", top):
             raise RTLManifestError(f"{where}.top must be a non-empty string")
         top = top.strip()
         sources_raw = item.get("sources")
@@ -129,10 +132,16 @@ def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
             raise RTLManifestError(
                 f"{where}.output_log must be under out/tests and end in /run.log"
             )
+        if output_log.casefold() in outputs:
+            raise RTLManifestError(f"{where}.output_log is duplicated: {output_log}")
         suite = item.get("suite")
         if suite is not None and (not isinstance(suite, str) or not suite.strip()):
             raise RTLManifestError(f"{where}.suite must be a non-empty string when present")
         resources = _string_list(item.get("resources"), f"{where}.resources")
+        artifacts = tuple(_safe_relative(value, f"{where}.artifacts")
+                          for value in _string_list(item.get("artifacts"), f"{where}.artifacts"))
+        if any(Path(value).name == "run.log" for value in artifacts):
+            raise RTLManifestError(f"{where}.artifacts cannot overwrite run.log")
         bench = RTLBench(
             name=name,
             top=top,
@@ -143,9 +152,11 @@ def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
             timeout_seconds=_timeout(item.get("timeout_seconds"), f"{where}.timeout_seconds"),
             parallel=_bool(item.get("parallel"), f"{where}.parallel", True),
             resources=resources,
+            artifacts=artifacts,
             suite=suite.strip() if isinstance(suite, str) else None,
         )
-        names.add(name)
+        names.add(name.casefold())
+        outputs.add(output_log.casefold())
         benches.append(bench)
     return tuple(benches)
 
@@ -161,11 +172,15 @@ def manifest_source_paths(root: Path) -> tuple[Path, ...]:
 
 
 def manifest_output_paths(root: Path) -> tuple[Path, ...]:
-    """Return the unique per-bench log paths declared by the manifest."""
-    return tuple(
-        root / bench.output_log
-        for bench in load_rtl_manifest(root)
-    )
+    """Return the per-bench logs and generated artifacts declared by the manifest."""
+    paths: list[Path] = []
+    for bench in load_rtl_manifest(root):
+        log = root / bench.output_log
+        paths.append(log)
+        paths.extend(log.parent / artifact for artifact in bench.artifacts)
+    if len({path.as_posix().casefold() for path in paths}) != len(paths):
+        raise RTLManifestError("two benches declare the same output path")
+    return tuple(paths)
 
 
 def bench_map(root: Path) -> dict[str, RTLBench]:

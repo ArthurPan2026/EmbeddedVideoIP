@@ -56,7 +56,6 @@ CATALOG_BD_REL = Path(
 )
 SIM_LOG_REL = Path("out/tests/video-tests.log")
 SIM_MANIFEST_REL = Path("tests/rtl_manifest.toml")
-SIM_LINE_START_BMP_REL = Path("out/tests/tb_embedded_video_ip_7series_tx/hdmi_tx_line_start.bmp")
 SYNTH_REPORT_NAMES = ("utilization.rpt", "timing_summary.rpt", "qor.json")
 _VDMA_SCALER_PROFILE = {
     "MAX_INPUT_WIDTH": 640,
@@ -212,16 +211,14 @@ def stage_input_paths(stage: str, root: Path = ROOT,
         bench_sources = manifest_source_paths(root)
         paths = [
             *common,
-            root / "tools/run_video_tests.sh",
-            root / "tools/run_video_tests.py",
-            root / "tools/rtl_manifest.py",
-            root / "tools/install_ps_library.py",
-            root / "tests/host/test_video_out.c",
-            root / "tests/host/test_install_ps_library.py",
+            *_tree_files(root / "tools"),
+            *_tree_files(root / "tests/host"),
             root / SIM_MANIFEST_REL,
             root / "VERSION",
             *(root / name for name in CONTRACT_FILES),
             *bench_sources,
+            hdl_dir / "embedded_video_ip_top.v",
+            hdl_dir / "embedded_video_ip_timing_gen_wrapper.v",
             root / "dependencies.lock.json",
             *(root / "software" / name for name in SIM_SOFTWARE_FILES),
         ]
@@ -362,8 +359,7 @@ def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
     if name == "ip_catalog":
         return [root / CATALOG_BD_REL]
     if name == "sim":
-        return [root / SIM_LOG_REL, *manifest_output_paths(root),
-                root / SIM_LINE_START_BMP_REL]
+        return [root / SIM_LOG_REL, *manifest_output_paths(root)]
     if name == "synth":
         if not part:
             raise FlowError("Synthesis output validation requires a part.")

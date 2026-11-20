@@ -1,0 +1,40 @@
+name: EmbeddedVideoIP CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - name: Install RTL simulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+      - name: Verify generated package identity
+        run: python tools/generate_package_metadata.py --root . --package ip_repo/panfpga/embedded_video_ip --verify
+      - name: Run host regression
+        run: |
+          mkdir -p out/ci
+          gcc -std=c99 -Wall -Wextra -Werror -pedantic -Isoftware software/video_out.c tests/host/test_video_out.c -o out/ci/test_video_out
+          out/ci/test_video_out
+          python -m unittest discover -s tests/host -v
+      - name: Run portable RTL regression
+        run: python tools/run_iverilog_tests.py
+      - name: Upload RTL logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: portable-rtl-logs
+          path: out/ci/iverilog/*/*.log
+          if-no-files-found: ignore

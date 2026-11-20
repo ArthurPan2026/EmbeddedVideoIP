@@ -288,6 +288,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv",
             "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0_wrapper.v",
             "ip/video_pipeline_1_0/hdl/embedded_video_ip_top.v",
+            "ip/video_pipeline_1_0/hdl/embedded_video_ip_timing_gen_wrapper.v",
             "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
             "ip/video_pipeline_1_0/hdl/audio_event_pulse_sync.sv",
             "ip/video_pipeline_1_0/hdl/hdmi_gain_bus_cdc.sv",
@@ -625,7 +626,8 @@ class VideoFlowCacheTests(unittest.TestCase):
                 'schema_version = 1\n\n[[bench]]\n'
                 'name = "tb_fixture"\n'
                 'sources = ["tests/rtl/tb_fixture.sv"]\n'
-                'top = "tb_fixture"\n',
+                'top = "tb_fixture"\n'
+                'artifacts = ["capture.bmp"]\n',
                 encoding="utf-8",
             )
 
@@ -634,9 +636,6 @@ class VideoFlowCacheTests(unittest.TestCase):
                 for path in video_flow.manifest_output_paths(root):
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text("TEST_PASS: fixture\n", encoding="utf-8")
-                bmp_path = Path(cwd).parent / video_flow.SIM_LINE_START_BMP_REL
-                bmp_path.parent.mkdir(parents=True, exist_ok=True)
-                bmp_path.write_bytes(b"BMfixture")
                 return SimpleNamespace(
                     returncode=0,
                     stdout="VIDEO_TESTS_PASS\\n",
@@ -666,7 +665,7 @@ class VideoFlowCacheTests(unittest.TestCase):
             ))
             self.assertEqual(len(calls), 2)
 
-            bmp_path = root / video_flow.SIM_LINE_START_BMP_REL
+            bmp_path = video_flow.manifest_output_paths(root)[1]
             bmp_path.write_bytes(b"tampered BMP")
             self.assertTrue(video_flow.run_stage(
                 "sim", command, Path("/fake/vivado"), inputs,
