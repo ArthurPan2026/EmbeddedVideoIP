@@ -276,7 +276,7 @@ module embedded_video_ip_top #(
         .dst_resetn(aresetn), .dst_pulse(audio_overflow_aclk)
       );
     end else begin : gen_hdmi_audio_disabled
-      // Audio关断时始终接收并丢弃样本，避免阻塞消费工程的PCM源。
+      // Audio 关闭时仍接收并丢弃样本，避免阻塞外部 PCM 源。
       assign s_axis_audio_pcm_tready = 1'b1;
       assign audio_underflow_aclk = 1'b0;
       assign audio_overflow_aclk = 1'b0;

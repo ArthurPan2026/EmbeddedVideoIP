@@ -92,6 +92,7 @@ static int configure_vdma(void *context, uint64_t base, uint32_t width,
 
 int main(void)
 {
+    const uint64_t frame_buffer_base = 0x10000000ULL;
     CHECK(strcmp(VIDEO_OUT_VERSION, "0.3.0-dev.2") == 0, "PS库版本不匹配");
     FakeVideo fake;
     VideoOutIo io;
@@ -230,7 +231,7 @@ int main(void)
     cfg.initial_frame_index = 0U;
     fake.regs[4] = (2U << 6) | (1U << 4) | 1U;
     fake.force_busy = 1U;
-    CHECK(VideoOut_Configure(&io, &cfg, 0x18000000ULL, 4U) == 0,
+    CHECK(VideoOut_Configure(&io, &cfg, frame_buffer_base, 4U) == 0,
           "卡住的数据流未能通过中止和重配恢复");
     CHECK(fake.abort_count == 1U && fake.resume_count == 0U &&
           fake.ctrl_write_count == 2U,
@@ -250,7 +251,7 @@ int main(void)
           VideoOut_GetLinkMode(&io, &link_mode) == 0 &&
           link_mode == VIDEO_OUT_LINK_HDMI,
           "HDMI link mode set/get failed");
-    CHECK(VideoOut_Configure(&io, &cfg, 0x18000000ULL, 4U) == 0 &&
+    CHECK(VideoOut_Configure(&io, &cfg, frame_buffer_base, 4U) == 0 &&
           (fake.regs[0] & (1U << 13)) != 0U,
           "video configure did not preserve HDMI link mode");
     CHECK(VideoOut_SetLinkMode(&io, VIDEO_OUT_LINK_DVI) == 0 &&

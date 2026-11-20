@@ -25,7 +25,7 @@ foreach name {aclk aresetn hdmi_ref_clk audio_pcm_clk bram_en bram_addr bram_dou
 foreach forbidden {hdmi_tx_hpd HDMI_DDC_IIC ac_bclk ac_mclk ac_pbdat ac_pblrc ac_muten} {
   if {[llength [get_bd_pins -quiet $cell/$forbidden]] > 0 ||
       [llength [get_bd_intf_pins -quiet $cell/$forbidden]] > 0} {
-    error "EmbeddedVideoIP 不得包含消费工程专属或 I2S 接口： $forbidden"
+    error "EmbeddedVideoIP 不得包含外部系统专属或 I2S 接口： $forbidden"
   }
 }
 set_property -dict [list CONFIG.ENABLE_HDMI_AUDIO {0}] $cell
