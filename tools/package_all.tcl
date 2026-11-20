@@ -11,7 +11,7 @@ source [file join $repo_root tools package_composite_ip.tcl]
 set metadata_python [auto_execok python3]
 if {$metadata_python eq ""} { set metadata_python [auto_execok python] }
 if {$metadata_python eq ""} { error "Python is required to write package metadata." }
-if {[catch {exec $metadata_python [file join $repo_root tools generate_package_metadata.py] --root $repo_root --package [file join $output_repo panfpga embedded_video_ip]} metadata_error]} {
+if {[catch {exec $metadata_python [file join $repo_root tools generate_package_metadata.py] --root $repo_root --package [file join $output_repo panfpga embedded_video_ip] --vivado-version [version -short]} metadata_error]} {
     error "Package metadata generation failed: $metadata_error"
 }
 puts "EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS: $output_repo"

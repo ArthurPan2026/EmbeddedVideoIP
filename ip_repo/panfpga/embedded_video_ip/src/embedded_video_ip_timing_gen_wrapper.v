@@ -18,8 +18,12 @@ module embedded_video_ip_timing_gen_wrapper (
   (* X_INTERFACE_INFO = "xilinx.com:interface:video_timing:2.0 video_timing VSYNC" *)
   output wire VSYNC,
   (* X_INTERFACE_INFO = "xilinx.com:interface:video_timing:2.0 video_timing FIELD" *)
-  output wire FIELD
+  output wire FIELD,
+  // Separate observation pin: connecting the bundled VSYNC member directly
+  // to an external BD port can detach that member from the timing interface.
+  output wire vsync_raw
 );
+  assign vsync_raw = VSYNC;
   hdmi_video_timing_gen u_video_timing_gen (
     .pixel_clk(pixel_clk), .resetn(resetn), .enable(enable), .timing_profile(timing_profile),
     .ACTIVE_VIDEO(ACTIVE_VIDEO), .HBLANK(HBLANK), .VBLANK(VBLANK),

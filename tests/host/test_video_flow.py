@@ -247,6 +247,14 @@ class VideoFlowProfileTests(unittest.TestCase):
             )
 
 class CompositeResetPolarityTests(unittest.TestCase):
+    def test_vsync_observation_does_not_disconnect_timing_interface(self):
+        root = Path(__file__).resolve().parents[2]
+        script = (root / "tools/package_composite_ip.tcl").read_text(encoding="utf-8")
+        wrapper = (root / "ip/video_pipeline_1_0/hdl/embedded_video_ip_timing_gen_wrapper.v").read_text(encoding="utf-8")
+        self.assertIn("connect_bd_net [get_bd_pins $timing_gen/vsync_raw] $video_vsync_raw_port", script)
+        self.assertNotIn("connect_bd_net [get_bd_pins $timing_gen/VSYNC] $video_vsync_raw_port", script)
+        self.assertIn("assign vsync_raw = VSYNC;", wrapper)
+
     def test_hdmi_pixel_reset_constant_is_inactive_for_aux_polarity(self):
         root = Path(__file__).resolve().parents[2]
         script = (root / "tools" / "package_composite_ip.tcl").read_text(encoding="utf-8")

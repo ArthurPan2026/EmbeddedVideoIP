@@ -4,6 +4,7 @@ set output_repo [file normalize [lindex $argv 1]]
 set project_dir [file normalize [lindex $argv 2]]
 set hdl_dir [file join $repo_root ip video_pipeline_1_0 hdl]
 set package_root [file join $output_repo panfpga embedded_video_ip]
+if {[file exists $package_root]} { file delete -force $package_root }
 file mkdir [file dirname $package_root]
 file mkdir [file dirname $project_dir]
 create_project -force embedded_video_ip_package $project_dir -part xc7z020clg400-1
@@ -112,7 +113,7 @@ connect_bd_net [get_bd_pins $video_out/vid_data] $video_rgb_port
 connect_bd_net [get_bd_pins $video_out/vid_active_video] $video_de_port
 connect_bd_net [get_bd_pins $video_out/vid_hsync] $video_hsync_port
 connect_bd_net [get_bd_pins $video_out/vid_vsync] $video_vsync_port
-connect_bd_net [get_bd_pins $timing_gen/VSYNC] $video_vsync_raw_port
+connect_bd_net [get_bd_pins $timing_gen/vsync_raw] $video_vsync_raw_port
 validate_bd_design
 save_bd_design
 set bd_file [get_files -quiet embedded_video_ip_video_out.bd]

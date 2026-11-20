@@ -4,6 +4,7 @@ set repo_root [file normalize [lindex $argv 0]]
 set output_repo [file normalize [lindex $argv 1]]
 set source_dir [file join $repo_root ip video_pipeline_1_0 hdl]
 set package_root [file join $output_repo panfpga video_pipeline]
+if {[file exists $package_root]} { file delete -force $package_root }
 file mkdir $package_root
 if {[info exists ::env(VIDEO_IP_PACKAGE_WORK_DIR)] &&
     ($::env(VIDEO_IP_PACKAGE_WORK_DIR) ne "")} {

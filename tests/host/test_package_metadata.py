@@ -15,16 +15,36 @@ class PackageMetadataTests(unittest.TestCase):
             canonical.mkdir(parents=True)
             (canonical / "core.sv").write_text("module core; endmodule\n", encoding="utf-8")
             package = root / "ip_repo/panfpga/embedded_video_ip"
-            package.mkdir(parents=True)
-            (package / "component.xml").write_text("<component/>\n", encoding="utf-8")
+            (package / "src").mkdir(parents=True)
+            (package / "src/core.sv").write_text("module core; endmodule\n", encoding="utf-8")
+            (package / "component.xml").write_text(
+                '<component xmlns:s="urn:spirit"><s:name>src/core.sv</s:name></component>\n', encoding="utf-8")
             first = build_metadata(root, package)
             (canonical / "core.sv").write_text("module core; wire x; endmodule\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "differs from canonical"):
+                build_metadata(root, package)
+            (package / "src/core.sv").write_text("module core; wire x; endmodule\n", encoding="utf-8")
             second = build_metadata(root, package)
             self.assertNotEqual(
                 first["canonical_source"]["sha256"],
                 second["canonical_source"]["sha256"],
             )
-            self.assertEqual(first["package"]["sha256"], second["package"]["sha256"])
+            self.assertNotEqual(first["package"]["sha256"], second["package"]["sha256"])
+
+    def test_generated_constant_vsync_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "ip/video_pipeline_1_0/hdl/core.sv"
+            source.parent.mkdir(parents=True)
+            source.write_text("module core; endmodule\n")
+            package = root / "ip_repo/panfpga/embedded_video_ip"
+            (package / "src").mkdir(parents=True)
+            (package / "src/core.sv").write_text(source.read_text())
+            (package / "component.xml").write_text(
+                '<component xmlns:s="urn:spirit"><s:name>src/core.sv</s:name></component>')
+            (package / "src/embedded_video_ip_video_out.v").write_text(".vtg_vsync(1'b0)")
+            with self.assertRaisesRegex(ValueError, "VSYNC is tied"):
+                build_metadata(root, package)
 
     def test_package_metadata_script_is_part_of_package_inputs(self) -> None:
         from tools import video_flow

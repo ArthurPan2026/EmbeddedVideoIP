@@ -65,7 +65,8 @@ module embedded_video_ip_video_out_timing_gen_0 (
   VBLANK,
   HSYNC,
   VSYNC,
-  FIELD
+  FIELD,
+  vsync_raw
 );
 
 (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 CLK.PIXEL_CLK CLK" *)
@@ -91,6 +92,7 @@ output wire HSYNC;
 output wire VSYNC;
 (* X_INTERFACE_INFO = "xilinx.com:interface:video_timing:2.0 video_timing FIELD" *)
 output wire FIELD;
+output wire vsync_raw;
 
   embedded_video_ip_timing_gen_wrapper inst (
     .pixel_clk(pixel_clk),
@@ -102,6 +104,7 @@ output wire FIELD;
     .VBLANK(VBLANK),
     .HSYNC(HSYNC),
     .VSYNC(VSYNC),
-    .FIELD(FIELD)
+    .FIELD(FIELD),
+    .vsync_raw(vsync_raw)
   );
 endmodule

@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (lin64) Build 6403652 Thu Mar 19 13:47:00 MDT 2026
-//Date        : Thu Nov 19 11:45:48 2026
+//Date        : Fri Nov 20 16:13:05 2026
 //Host        : pzy-fpga running 64-bit Ubuntu 22.04.5 LTS
 //Command     : generate_target embedded_video_ip_video_out.bd
 //Design      : embedded_video_ip_video_out
@@ -93,12 +93,9 @@ module embedded_video_ip_video_out
   wire video_hsync;
   wire [0:0]video_out_aclken_invert_Res;
   wire [0:0]video_out_pixel_ce_one_dout;
-  wire video_out_vtg_ce;
   wire [23:0]video_rgb;
   wire video_vsync;
   wire video_vsync_raw;
-
-  assign video_vsync_raw = timing_gen_video_timing_VSYNC;
 
   embedded_video_ip_video_out_clk_wiz_hd_0 clk_wiz_hd
        (.clk_in1(hdmi_ref_clk),
@@ -151,7 +148,8 @@ module embedded_video_ip_video_out
         .enable(video_out_pixel_ce_one_dout),
         .pixel_clk(pixel_clk),
         .resetn(pixel_aresetn),
-        .timing_profile(timing_profile));
+        .timing_profile(timing_profile),
+        .vsync_raw(video_vsync_raw));
   embedded_video_ip_video_out_video_out_0 video_out
        (.aclk(aclk),
         .aclken(video_out_aclken_invert_Res),
@@ -170,7 +168,6 @@ module embedded_video_ip_video_out
         .vid_io_out_reset(pixel_reset_peripheral_reset),
         .vid_vsync(video_vsync),
         .vtg_active_video(timing_gen_video_timing_ACTIVE_VIDEO),
-        .vtg_ce(video_out_vtg_ce),
         .vtg_field_id(timing_gen_video_timing_FIELD),
         .vtg_hblank(timing_gen_video_timing_HBLANK),
         .vtg_hsync(timing_gen_video_timing_HSYNC),
