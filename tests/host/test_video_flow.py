@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import video_flow
+from rtl_manifest import load_rtl_manifest
 
 UTILIZATION_FIXTURE = """\
 | Slice LUTs*                | 100 |     0 |          0 | 53200 | 0.19 |
@@ -268,6 +269,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "tools/synth_core.tcl",
             "tools/synth_composite.tcl",
             "tools/run_video_tests.sh",
+            "tools/rtl_manifest.py",
             "tools/install_ps_library.py",
             "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv",
             "ip/video_pipeline_1_0/hdl/axis_rgb888.sv",
@@ -309,40 +311,27 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "software/platforms/xilinx_zynq7000/video_out_xilinx.h",
             "software/unrelated_ps.c",
             "VERSION",
-            "tests/rtl/tb_axis_video_nn_scaler.sv",
-            "tests/rtl/tb_axis_video_nn_scaler_output_dims.sv",
-            "tests/rtl/tb_axis_video_nn_scaler_native_input.sv",
-            "tests/rtl/tb_video_bram_rgb565_reader.sv",
-            "tests/rtl/tb_video_pipeline_v1_0.sv",
-            "tests/rtl/tb_video_pipeline_output_mode.sv",
-            "tests/rtl/tb_video_pipeline_static_profile.sv",
-            "tests/rtl/tb_hdmi_runtime_status.sv",
-            "tests/rtl/tb_hdmi_gain_bus_cdc.sv",
-            "tests/rtl/tb_hdmi_primitives.sv",
-            "tests/rtl/tb_hdmi_audio_packets.sv",
-            "tests/rtl/tb_hdmi_boot_timing_path.sv",
-            "tests/rtl/tb_audio_pcm_async_fifo.sv",
-            "tests/rtl/tb_hdmi_packet_assembler.sv",
-            "tests/rtl/tb_hdmi_line_slot_scheduler.sv",
-            "tests/rtl/tb_hdmi_tmds_mode_mux.sv",
-            "tests/rtl/tb_hdmi_video_encoder.sv",
-            "tests/rtl/tb_hdmi_color_avi_infoframe.sv",
-            "tests/rtl/tb_hdmi_7series_output_serdes.sv",
-            "tests/rtl/tb_hdmi_mode_transition_ctrl.sv",
-            "tests/rtl/tb_hdmi_video_timing_gen.sv",
-            "tests/rtl/tb_hdmi_clock_profile_mux.sv",
-            "tests/rtl/tb_hdmi_pcm_packet_source.sv",
-            "tests/rtl/tb_hdmi_pcm_profile_rates.sv",
-            "tests/rtl/tb_embedded_video_ip_7series_tx.sv",
+            "tests/rtl_manifest.toml",
+            "tools/run_video_tests.py",
             "tests/host/test_video_out.c",
             "tests/host/test_install_ps_library.py",
             "docs/architecture.md",
             "README.md",
         ]
+        files.extend(
+            source
+            for bench in load_rtl_manifest(video_flow.ROOT)
+            for source in bench.sources
+        )
+        files = list(dict.fromkeys(files))
         for relative in files:
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"fixture:{relative}\n", encoding="utf-8")
+        (root / "tests/rtl_manifest.toml").write_text(
+            (video_flow.ROOT / "tests/rtl_manifest.toml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
 
     def test_synth_inputs_ignore_docs_tests_and_ps_but_track_rtl(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -407,8 +396,12 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("VERSION", sim)
             self.assertNotIn("software/unrelated_ps.c", sim)
             self.assertIn("tools/run_video_tests.sh", sim)
+            self.assertIn("tools/run_video_tests.py", sim)
+            self.assertIn("tools/rtl_manifest.py", sim)
+            self.assertIn("tests/rtl_manifest.toml", sim)
             self.assertNotIn("docs/architecture.md", sim)
             runner = (video_flow.ROOT / "tools/run_video_tests.sh").read_text(encoding="utf-8")
+            manifest = (video_flow.ROOT / "tests/rtl_manifest.toml").read_text(encoding="utf-8")
             for bench in (
                 "tb_hdmi_clock_profile_mux",
                 "tb_hdmi_mode_transition_ctrl",
@@ -419,7 +412,8 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
                 "tb_hdmi_7series_output_serdes",
                 "tb_hdmi_pcm_profile_rates",
             ):
-                self.assertIn(f"run_xsim {bench}", runner)
+                self.assertIn(f'name = "{bench}"', manifest)
+            self.assertIn("run_video_tests.py", runner)
             self.assertNotIn("xvhdl", runner)
 
             packaged_root = root / "ip_repo/panfpga/video_pipeline"
@@ -614,14 +608,21 @@ class VideoFlowCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             calls: list[list[str]] = []
+            (root / "tests/rtl").mkdir(parents=True, exist_ok=True)
+            (root / "tests/rtl/tb_fixture.sv").write_text("module tb_fixture; endmodule\n", encoding="utf-8")
+            (root / "tests/rtl_manifest.toml").write_text(
+                'schema_version = 1\n\n[[bench]]\n'
+                'name = "tb_fixture"\n'
+                'sources = ["tests/rtl/tb_fixture.sv"]\n'
+                'top = "tb_fixture"\n',
+                encoding="utf-8",
+            )
 
             def runner(command, cwd, text, capture_output, check, env):
                 calls.append(command)
-                output_root = Path(cwd) / "tests"
-                for relative in video_flow.SIM_TEST_LOG_RELS:
-                    path = Path(cwd).parent / relative
+                for path in video_flow.manifest_output_paths(root):
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("TEST_PASS: fixture\\n", encoding="utf-8")
+                    path.write_text("TEST_PASS: fixture\n", encoding="utf-8")
                 bmp_path = Path(cwd).parent / video_flow.SIM_LINE_START_BMP_REL
                 bmp_path.parent.mkdir(parents=True, exist_ok=True)
                 bmp_path.write_bytes(b"BMfixture")
@@ -645,7 +646,7 @@ class VideoFlowCacheTests(unittest.TestCase):
             ))
             self.assertEqual(len(calls), 1)
 
-            altered = root / video_flow.SIM_TEST_LOG_RELS[0]
+            altered = video_flow.manifest_output_paths(root)[0]
             altered.write_text("tampered\\n", encoding="utf-8")
             self.assertTrue(video_flow.run_stage(
                 "sim", command, Path("/fake/vivado"), inputs,

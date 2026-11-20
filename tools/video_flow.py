@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
+try:
+    from tools.rtl_manifest import manifest_output_paths, manifest_source_paths
+except ModuleNotFoundError:  # direct script/import compatibility
+    from rtl_manifest import manifest_output_paths, manifest_source_paths
 OUT = ROOT / "out"
 MANIFEST = OUT / "manifest.json"
 MANIFEST_SCHEMA_VERSION = 3
@@ -39,65 +43,6 @@ SYNTH_HDL_FILES = (
     "axi_lite_video_regs.sv",
     "video_pipeline_v1_0.sv",
 )
-SIM_HDL_FILES = (
-    "axis_video_nn_scaler.sv",
-    "axis_rgb888.sv",
-    "axis_video_mux3.sv",
-    "video_bram_rgb565_reader.sv",
-    "axi_lite_video_regs.sv",
-    "video_pipeline_v1_0.sv",
-    "video_pipeline_v1_0_wrapper.v",
-    "audio_event_pulse_sync.sv",
-    "hdmi_gain_bus_cdc.sv",
-    "audio_gain_q15.sv",
-    "audio_pcm_async_fifo.sv",
-    "embedded_video_ip_reset_sync.sv",
-    "hdmi_runtime_status.sv",
-    "embedded_video_ip_top.v",
-    "embedded_video_ip_7series_tx.sv",
-    "hdmi_acr_packet.sv",
-    "hdmi_audio_infoframe.sv",
-    "hdmi_avi_infoframe.sv",
-    "hdmi_audio_sample_packet.sv",
-    "hdmi_bch_ecc.sv",
-    "hdmi_line_slot_scheduler.sv",
-    "hdmi_packet_assembler.sv",
-    "hdmi_pcm_packet_source.sv",
-    "hdmi_terc4_encoder.sv",
-    "hdmi_tmds_mode_mux.sv",
-    "hdmi_tmds_symbol_encoder.sv",
-    "hdmi_tmds_video_encoder.sv",
-    "hdmi_mode_transition_ctrl.sv",
-    "hdmi_video_timing_gen.sv",
-    "hdmi_clock_profile_mux.sv",
-)
-SIM_RTL_TEST_FILES = (
-    "tb_axis_video_nn_scaler.sv",
-    "tb_axis_video_nn_scaler_output_dims.sv",
-    "tb_axis_video_nn_scaler_native_input.sv",
-    "tb_video_bram_rgb565_reader.sv",
-    "tb_video_pipeline_v1_0.sv",
-    "tb_video_pipeline_output_mode.sv",
-    "tb_video_pipeline_static_profile.sv",
-    "tb_hdmi_runtime_status.sv",
-    "tb_hdmi_gain_bus_cdc.sv",
-    "tb_hdmi_mode_transition_ctrl.sv",
-    "tb_hdmi_boot_timing_path.sv",
-    "tb_hdmi_video_timing_gen.sv",
-    "tb_hdmi_clock_profile_mux.sv",
-    "tb_hdmi_primitives.sv",
-    "tb_hdmi_audio_packets.sv",
-    "tb_audio_pcm_async_fifo.sv",
-    "tb_hdmi_packet_assembler.sv",
-    "tb_hdmi_line_slot_scheduler.sv",
-    "tb_hdmi_tmds_mode_mux.sv",
-    "tb_hdmi_video_encoder.sv",
-    "tb_hdmi_color_avi_infoframe.sv",
-    "tb_hdmi_7series_output_serdes.sv",
-    "tb_hdmi_pcm_packet_source.sv",
-    "tb_hdmi_pcm_profile_rates.sv",
-    "tb_embedded_video_ip_7series_tx.sv",
-)
 SIM_SOFTWARE_FILES = (
     "video_out.c",
     "video_out.h",
@@ -109,36 +54,8 @@ CATALOG_BD_REL = Path(
     "embedded_video_ip_catalog_validation/embedded_video_ip_catalog_validation.bd"
 )
 SIM_LOG_REL = Path("out/tests/video-tests.log")
+SIM_MANIFEST_REL = Path("tests/rtl_manifest.toml")
 SIM_LINE_START_BMP_REL = Path("out/tests/tb_embedded_video_ip_7series_tx/hdmi_tx_line_start.bmp")
-SIM_TEST_LOG_RELS = (
-    Path("out/tests/tb_axis_video_nn_scaler/run.log"),
-    Path("out/tests/tb_axis_video_nn_scaler_bram/run.log"),
-    Path("out/tests/tb_axis_video_nn_scaler_output_dims/run.log"),
-    Path("out/tests/tb_axis_video_nn_scaler_native_input/run.log"),
-    Path("out/tests/tb_axis_video_nn_scaler_native_input_bram/run.log"),
-    Path("out/tests/tb_video_bram_rgb565_reader/run.log"),
-    Path("out/tests/tb_video_pipeline_v1_0/run.log"),
-    Path("out/tests/tb_video_pipeline_output_mode/run.log"),
-    Path("out/tests/tb_video_pipeline_static_profile/run.log"),
-    Path("out/tests/tb_hdmi_runtime_status/run.log"),
-    Path("out/tests/tb_hdmi_gain_bus_cdc/run.log"),
-    Path("out/tests/tb_hdmi_mode_transition_ctrl/run.log"),
-    Path("out/tests/tb_hdmi_boot_timing_path/run.log"),
-    Path("out/tests/tb_hdmi_video_timing_gen/run.log"),
-    Path("out/tests/tb_hdmi_clock_profile_mux/run.log"),
-    Path("out/tests/tb_hdmi_primitives/run.log"),
-    Path("out/tests/tb_hdmi_audio_packets/run.log"),
-    Path("out/tests/tb_audio_pcm_async_fifo/run.log"),
-    Path("out/tests/tb_hdmi_packet_assembler/run.log"),
-    Path("out/tests/tb_hdmi_line_slot_scheduler/run.log"),
-    Path("out/tests/tb_hdmi_tmds_mode_mux/run.log"),
-    Path("out/tests/tb_hdmi_video_encoder/run.log"),
-    Path("out/tests/tb_hdmi_color_avi_infoframe/run.log"),
-    Path("out/tests/tb_hdmi_7series_output_serdes/run.log"),
-    Path("out/tests/tb_hdmi_pcm_packet_source/run.log"),
-    Path("out/tests/tb_hdmi_pcm_profile_rates/run.log"),
-    Path("out/tests/tb_embedded_video_ip_7series_tx/run.log"),
-)
 SYNTH_REPORT_NAMES = ("utilization.rpt", "timing_summary.rpt", "qor.json")
 _VDMA_SCALER_PROFILE = {
     "MAX_INPUT_WIDTH": 640,
@@ -289,15 +206,18 @@ def stage_input_paths(stage: str, root: Path = ROOT,
         package_files.extend(_tree_files(root / "ip_repo/if"))
         paths = [*common, root / "tools/validate_ip_catalog.tcl", *package_files]
     elif stage == "sim":
+        bench_sources = manifest_source_paths(root)
         paths = [
             *common,
             root / "tools/run_video_tests.sh",
+            root / "tools/run_video_tests.py",
+            root / "tools/rtl_manifest.py",
             root / "tools/install_ps_library.py",
             root / "tests/host/test_video_out.c",
             root / "tests/host/test_install_ps_library.py",
+            root / SIM_MANIFEST_REL,
             root / "VERSION",
-            *(hdl_dir / name for name in SIM_HDL_FILES),
-            *(root / "tests/rtl" / name for name in SIM_RTL_TEST_FILES),
+            *bench_sources,
             root / "dependencies.lock.json",
             *(root / "software" / name for name in SIM_SOFTWARE_FILES),
         ]
@@ -438,7 +358,7 @@ def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
     if name == "ip_catalog":
         return [root / CATALOG_BD_REL]
     if name == "sim":
-        return [root / SIM_LOG_REL, *(root / path for path in SIM_TEST_LOG_RELS),
+        return [root / SIM_LOG_REL, *manifest_output_paths(root),
                 root / SIM_LINE_START_BMP_REL]
     if name == "synth":
         if not part:

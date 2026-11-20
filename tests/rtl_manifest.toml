@@ -1,0 +1,137 @@
+schema_version = 1
+
+[[bench]]
+name = "tb_axis_video_nn_scaler"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler.sv"]
+top = "tb_axis_video_nn_scaler"
+
+[[bench]]
+name = "tb_axis_video_nn_scaler_bram"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler.sv"]
+top = "tb_axis_video_nn_scaler_bram"
+
+[[bench]]
+name = "tb_axis_video_nn_scaler_output_dims"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler_output_dims.sv"]
+top = "tb_axis_video_nn_scaler_output_dims"
+
+[[bench]]
+name = "tb_axis_video_nn_scaler_native_input"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler_native_input.sv"]
+top = "tb_axis_video_nn_scaler_native_input"
+
+[[bench]]
+name = "tb_axis_video_nn_scaler_native_input_bram"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler_native_input.sv"]
+top = "tb_axis_video_nn_scaler_native_input_bram"
+
+[[bench]]
+name = "tb_video_bram_rgb565_reader"
+sources = ["ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "tests/rtl/tb_video_bram_rgb565_reader.sv"]
+top = "tb_video_bram_rgb565_reader"
+
+[[bench]]
+name = "tb_video_pipeline_v1_0"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_v1_0.sv"]
+top = "tb_video_pipeline_v1_0"
+
+[[bench]]
+name = "tb_video_pipeline_output_mode"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
+top = "tb_video_pipeline_output_mode"
+
+[[bench]]
+name = "tb_video_pipeline_static_profile"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_static_profile.sv"]
+top = "tb_video_pipeline_static_profile"
+
+[[bench]]
+name = "tb_hdmi_runtime_status"
+sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_runtime_status.sv", "tests/rtl/tb_hdmi_runtime_status.sv"]
+top = "tb_hdmi_runtime_status"
+
+[[bench]]
+name = "tb_hdmi_gain_bus_cdc"
+sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_gain_bus_cdc.sv", "tests/rtl/tb_hdmi_gain_bus_cdc.sv"]
+top = "tb_hdmi_gain_bus_cdc"
+
+[[bench]]
+name = "tb_hdmi_mode_transition_ctrl"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_mode_transition_ctrl.sv", "tests/rtl/tb_hdmi_mode_transition_ctrl.sv"]
+top = "tb_hdmi_mode_transition_ctrl"
+
+[[bench]]
+name = "tb_hdmi_boot_timing_path"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_video_timing_gen.sv", "ip/video_pipeline_1_0/hdl/hdmi_mode_transition_ctrl.sv", "tests/rtl/tb_hdmi_boot_timing_path.sv"]
+top = "tb_hdmi_boot_timing_path"
+
+[[bench]]
+name = "tb_hdmi_video_timing_gen"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_video_timing_gen.sv", "tests/rtl/tb_hdmi_video_timing_gen.sv"]
+top = "tb_hdmi_video_timing_gen"
+
+[[bench]]
+name = "tb_hdmi_clock_profile_mux"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv", "tests/rtl/tb_hdmi_clock_profile_mux.sv"]
+top = "tb_hdmi_clock_profile_mux"
+
+[[bench]]
+name = "tb_hdmi_primitives"
+sources = ["ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_symbol_encoder.sv", "tests/rtl/tb_hdmi_primitives.sv"]
+top = "tb_hdmi_primitives"
+
+[[bench]]
+name = "tb_hdmi_audio_packets"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "tests/rtl/tb_hdmi_audio_packets.sv"]
+top = "tb_hdmi_audio_packets"
+
+[[bench]]
+name = "tb_audio_pcm_async_fifo"
+sources = ["ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "tests/rtl/tb_audio_pcm_async_fifo.sv"]
+top = "tb_audio_pcm_async_fifo"
+
+[[bench]]
+name = "tb_hdmi_packet_assembler"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_packet_assembler.sv"]
+top = "tb_hdmi_packet_assembler"
+
+[[bench]]
+name = "tb_hdmi_line_slot_scheduler"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "tests/rtl/tb_hdmi_line_slot_scheduler.sv"]
+top = "tb_hdmi_line_slot_scheduler"
+
+[[bench]]
+name = "tb_hdmi_tmds_mode_mux"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "tests/rtl/tb_hdmi_tmds_mode_mux.sv"]
+top = "tb_hdmi_tmds_mode_mux"
+
+[[bench]]
+name = "tb_hdmi_video_encoder"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "tests/rtl/tb_hdmi_video_encoder.sv"]
+top = "tb_hdmi_video_encoder"
+
+[[bench]]
+name = "tb_hdmi_color_avi_infoframe"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_color_avi_infoframe.sv"]
+top = "tb_hdmi_color_avi_infoframe"
+
+[[bench]]
+name = "tb_hdmi_7series_output_serdes"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "tests/rtl/tb_hdmi_7series_output_serdes.sv"]
+top = "tb_hdmi_7series_output_serdes"
+defines = ["SYNTHESIS"]
+
+[[bench]]
+name = "tb_hdmi_pcm_packet_source"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_pcm_packet_source.sv"]
+top = "tb_hdmi_pcm_packet_source"
+
+[[bench]]
+name = "tb_hdmi_pcm_profile_rates"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_pcm_profile_rates.sv"]
+top = "tb_hdmi_pcm_profile_rates"
+
+[[bench]]
+name = "tb_embedded_video_ip_7series_tx"
+sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv", "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "tests/rtl/tb_embedded_video_ip_7series_tx.sv"]
+top = "tb_embedded_video_ip_7series_tx"
