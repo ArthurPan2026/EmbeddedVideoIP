@@ -39,7 +39,7 @@ jobs:
         run: |
           notes="$(mktemp)"
           printf '%s\n' "EmbeddedVideoIP $(cat VERSION)" "" "Vivado 2025.2.1" "" "Assets:" "- Vivado IP Catalog package for consumer projects." "- Zynq-7000 PS C library package." "- SHA256SUMS and per-package RELEASE-METADATA.json." > "$notes"
-          args=("$GITHUB_REF_NAME" out/releases/EmbeddedVideoIP-*-vivado-2025.2.1.zip out/releases/EmbeddedVideoIP-PS-Zynq7000-*.zip out/releases/SHA256SUMS --title "$GITHUB_REF_NAME" --notes-file "$notes")
+          args=("$GITHUB_REF_NAME" build/fpga-flow/releases/EmbeddedVideoIP-*-vivado-2025.2.1.zip build/fpga-flow/releases/EmbeddedVideoIP-PS-Zynq7000-*.zip build/fpga-flow/releases/SHA256SUMS --title "$GITHUB_REF_NAME" --notes-file "$notes")
           if [[ "$GITHUB_REF_NAME" == *-dev* || "$GITHUB_REF_NAME" == *-alpha* || "$GITHUB_REF_NAME" == *-beta* || "$GITHUB_REF_NAME" == *-rc* ]]; then
             args+=(--prerelease)
           fi

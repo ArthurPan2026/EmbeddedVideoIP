@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -19,11 +20,16 @@ try:
     from tools.rtl_manifest import manifest_output_paths, manifest_source_paths
 except ModuleNotFoundError:  # direct script/import compatibility
     from rtl_manifest import manifest_output_paths, manifest_source_paths
-OUT = ROOT / "out"
+def output_root(root: Path = ROOT) -> Path:
+    return Path(os.environ.get("FPGA_FLOW_OUTPUT_DIR", str(root / "build/fpga-flow")))
+
+
+OUT = output_root()
 MANIFEST = OUT / "manifest.json"
 MANIFEST_SCHEMA_VERSION = 3
 INPUT_PARTITION_VERSION = 4
-LOCK = json.loads((ROOT / "dependencies.lock.json").read_text(encoding="utf-8"))
+PROJECT_CONFIG = tomllib.loads((ROOT / "fpga-project.toml").read_text(encoding="utf-8"))
+VIVADO_VERSION = str(PROJECT_CONFIG["tools"]["vivado_version"])
 PRODUCT_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 DEFAULT_VIVADO = Path("vivado")
 PACKAGE_REPO = OUT / "packages/ip_repo"
@@ -53,11 +59,11 @@ SIM_SOFTWARE_FILES = (
     "platforms/xilinx_zynq7000/video_out_xilinx.h",
 )
 CATALOG_BD_REL = Path(
-    "out/ip_catalog_validation_feature_profile/embedded_video_ip_catalog_validation.srcs/sources_1/bd/"
+    "build/fpga-flow/ip_catalog_validation_feature_profile/embedded_video_ip_catalog_validation.srcs/sources_1/bd/"
     "embedded_video_ip_catalog_validation/embedded_video_ip_catalog_validation.bd"
 )
-SIM_LOG_REL = Path("out/tests/video-tests.log")
-SIM_MANIFEST_REL = Path("tests/rtl_manifest.toml")
+SIM_LOG_REL = Path("build/fpga-flow/tests/video-tests.log")
+SIM_MANIFEST_REL = Path("fpga-project.toml")
 SYNTH_REPORT_NAMES = ("utilization.rpt", "timing_summary.rpt", "qor.json")
 _VDMA_SCALER_PROFILE = {
     "MAX_INPUT_WIDTH": 640,
@@ -118,7 +124,7 @@ SYNTH_PROFILE_GENERICS: dict[str, dict[str, int]] = {
     "composite_audio_on": {**_COMPOSITE_VIDEO_PROFILE, "ENABLE_HDMI_AUDIO": 1},
 }
 COMPOSITE_SYNTH_PROFILES = {"composite_audio_off", "composite_audio_on"}
-IGNORED_DIRS = {".git", ".Xil", "__pycache__", ".cache", "out"}
+IGNORED_DIRS = {".git", ".Xil", "__pycache__", ".cache", "build"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
 
@@ -177,7 +183,7 @@ def stage_input_paths(stage: str, root: Path = ROOT,
                       profile: str | None = None) -> list[Path]:
     """选择会影响当前构建阶段的文件。"""
     hdl_dir = root / "ip/video_pipeline_1_0/hdl"
-    common = [root / "tools/video_flow.py"]
+    common = [root / "tools/video_flow.py", root / "fpga-project.toml"]
 
     if stage == "package":
         package_hdl = [
@@ -191,7 +197,6 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             root / "tools/package_composite_ip.tcl",
             root / "tools/generate_package_metadata.py",
             root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc",
-            root / "dependencies.lock.json",
             root / "VERSION",
             *(root / name for name in CONTRACT_FILES),
             *package_hdl,
@@ -199,8 +204,8 @@ def stage_input_paths(stage: str, root: Path = ROOT,
         ]
     elif stage == "ip_catalog":
         package_roots = [
-            root / "out/packages/ip_repo/panfpga/video_pipeline",
-            root / "out/packages/ip_repo/panfpga/embedded_video_ip",
+            output_root(root) / "packages/ip_repo/panfpga/video_pipeline",
+            output_root(root) / "packages/ip_repo/panfpga/embedded_video_ip",
         ]
         package_files = []
         for package_root in package_roots:
@@ -221,7 +226,6 @@ def stage_input_paths(stage: str, root: Path = ROOT,
             *bench_sources,
             hdl_dir / "embedded_video_ip_top.v",
             hdl_dir / "embedded_video_ip_timing_gen_wrapper.v",
-            root / "dependencies.lock.json",
             *(root / "software" / name for name in SIM_SOFTWARE_FILES),
         ]
     elif stage == "synth":
@@ -262,7 +266,7 @@ def synth_profile_generics(profile: str) -> dict[str, int]:
 
 def synth_profile_output_dir(part: str, profile: str, root: Path = ROOT) -> Path:
     synth_profile_generics(profile)
-    base = root / "out/synth" / part
+    base = output_root(root) / "synth" / part
     return base if profile == "generic" else base / "profiles" / profile
 
 
@@ -296,7 +300,7 @@ def fingerprint(inputs: dict[str, str], vivado_version: str, action: str,
         "part": part,
         "profile": profile,
         "vivado_version": vivado_version,
-        "vivado_required": str(LOCK["vivado"]),
+        "vivado_required": VIVADO_VERSION,
         "python_version": sys.version.split()[0] if action == "sim" else None,
         "inputs": inputs,
     }
@@ -304,7 +308,7 @@ def fingerprint(inputs: dict[str, str], vivado_version: str, action: str,
 
 
 def read_manifest(root: Path = ROOT) -> dict[str, Any]:
-    manifest = root / "out/manifest.json"
+    manifest = output_root(root) / "manifest.json"
     if not manifest.is_file():
         return {"schema_version": MANIFEST_SCHEMA_VERSION, "stages": {}}
     try:
@@ -317,7 +321,7 @@ def read_manifest(root: Path = ROOT) -> dict[str, Any]:
 
 
 def write_manifest(data: dict[str, Any], root: Path = ROOT) -> None:
-    manifest = root / "out/manifest.json"
+    manifest = output_root(root) / "manifest.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     data["schema_version"] = MANIFEST_SCHEMA_VERSION
     data["product_version"] = PRODUCT_VERSION
@@ -355,8 +359,8 @@ def vivado_version(vivado: Path) -> str:
 def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
                        profile: str | None = None) -> list[Path]:
     if name == "package":
-        core_root = root / "out/packages/ip_repo/panfpga/video_pipeline"
-        composite_root = root / "out/packages/ip_repo/panfpga/embedded_video_ip"
+        core_root = output_root(root) / "packages/ip_repo/panfpga/video_pipeline"
+        composite_root = output_root(root) / "packages/ip_repo/panfpga/embedded_video_ip"
         paths = [*_tree_files(core_root), *_tree_files(composite_root), *_tree_files(root / "ip_repo/if")]
         if not (core_root / "component.xml").is_file():
             raise FlowError(f"Internal video IP is missing: {core_root / 'component.xml'}")
@@ -364,9 +368,12 @@ def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
             raise FlowError(f"Composite IP is missing: {composite_root / 'component.xml'}")
         return paths
     if name == "ip_catalog":
-        return [root / CATALOG_BD_REL]
+        return [output_root(root) / CATALOG_BD_REL.relative_to("build/fpga-flow")]
     if name == "sim":
-        return [root / SIM_LOG_REL, *manifest_output_paths(root)]
+        paths = [output_root(root) / "tests/video-tests.log"]
+        paths.extend(output_root(root) / path.relative_to(root / "build/fpga-flow")
+                     for path in manifest_output_paths(root))
+        return paths
     if name == "synth":
         if not part:
             raise FlowError("Synthesis output validation requires a part.")
@@ -571,11 +578,12 @@ def run_stage(name: str, command: list[str], vivado: Path,
 
     stage_key = stage_manifest_key(name, profile)
     version = tool_version if tool_version is not None else vivado_version(vivado)
-    required = str(LOCK["vivado"])
+    required = VIVADO_VERSION
     if version != required:
-        raise FlowError(f"Vivado {required} is required by dependencies.lock.json; found {version}.")
+        raise FlowError(f"Vivado {required} is required by fpga-project.toml; found {version}.")
     input_hash = fingerprint(inputs, version, name, part, profile)
-    data = read_manifest(root)
+    managed = "FPGA_FLOW_RUN_DIR" in os.environ
+    data = {"stages": {}} if managed else read_manifest(root)
     stages = data.setdefault("stages", {})
     if not isinstance(stages, dict):
         stages = {}
@@ -587,7 +595,7 @@ def run_stage(name: str, command: list[str], vivado: Path,
         print(f"VIDEO_FLOW_CACHE_HIT: {stage_key}")
         return False
 
-    out_root = root / "out"
+    out_root = output_root(root)
     log_dir = out_root / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_name = name if profile is None else f"{name}-{profile}"
@@ -608,7 +616,7 @@ def run_stage(name: str, command: list[str], vivado: Path,
         raise FlowError(f"Stage {name} returned success without {success_marker}; see {log}.")
 
     if name == "sim":
-        sim_log = root / SIM_LOG_REL
+        sim_log = output_root(root) / "tests/video-tests.log"
         sim_log.parent.mkdir(parents=True, exist_ok=True)
         sim_log.write_text(output, encoding="utf-8", errors="replace")
 
@@ -643,7 +651,8 @@ def run_stage(name: str, command: list[str], vivado: Path,
         "output_sha256": output_fingerprint(outputs),
         **({"qor": qor} if qor is not None else {}),
     }
-    write_manifest(data, root)
+    if not managed:
+        write_manifest(data, root)
     print(f"VIDEO_FLOW_STAGE_PASS: {stage_key}")
     return True
 
@@ -667,11 +676,11 @@ def command_package(args: argparse.Namespace, validate: bool = False) -> None:
     version = vivado_version(vivado)
     package = [
         str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/package_all.tcl"),
-        "-tclargs", str(ROOT), str(ROOT / "out/packages/ip_repo"),
-        str(ROOT / "out/package_composite_project"),
+        "-tclargs", str(ROOT), str(output_root() / "packages/ip_repo"),
+        str(output_root() / "package_composite_project"),
     ]
     package_env = os.environ.copy()
-    package_env["VIDEO_IP_PACKAGE_WORK_DIR"] = str(ROOT / "out/package_project_static_profile")
+    package_env["VIDEO_IP_PACKAGE_WORK_DIR"] = str(output_root() / "package_project_static_profile")
     run_stage(
         "package", package, vivado, input_manifest("package"),
         tool_version=version, env=package_env, success_marker="EMBEDDED_VIDEO_IP_PACKAGE_STAGE_PASS",
@@ -680,8 +689,8 @@ def command_package(args: argparse.Namespace, validate: bool = False) -> None:
         validation = [
             str(vivado), "-mode", "batch",
             "-source", str(ROOT / "tools/validate_ip_catalog.tcl"),
-            "-tclargs", str(ROOT), str(ROOT / "out/packages/ip_repo"),
-            str(ROOT / "out/ip_catalog_validation_feature_profile"),
+            "-tclargs", str(ROOT), str(output_root() / "packages/ip_repo"),
+            str(output_root() / "ip_catalog_validation_feature_profile"),
         ]
         run_stage(
             "ip_catalog", validation, vivado, input_manifest("ip_catalog"),
@@ -701,7 +710,7 @@ def command_synth(args: argparse.Namespace) -> None:
         script = ROOT / "tools/synth_composite.tcl"
         command = [
             str(vivado), "-mode", "batch", "-source", str(script),
-            "-tclargs", str(ROOT), str(ROOT / "out/packages/ip_repo"), part,
+            "-tclargs", str(ROOT), str(output_root() / "packages/ip_repo"), part,
             str(output_dir), profile, *generic_args,
         ]
     else:
@@ -796,8 +805,8 @@ def main() -> int:
         if args.command == "doctor":
             vivado = resolve_vivado(args.vivado)
             version = vivado_version(vivado)
-            if version != str(LOCK["vivado"]):
-                raise FlowError(f"Required Vivado {LOCK['vivado']}; found {version}.")
+            if version != VIVADO_VERSION:
+                raise FlowError(f"Required Vivado {VIVADO_VERSION}; found {version}.")
             print(f"VIDEO_FLOW_DOCTOR_PASS: Vivado {version}")
         elif args.command == "sim":
             command_sim(args)

@@ -21,15 +21,15 @@ Vivado 工程只需 IP ZIP。修改 IP 源码、重新打包或运行完整回�
 - `Video/Lib/Src/video_out.c`
 - `Video/Lib/XilinxZynq7000/video_out_xilinx.c`
 
-该软件包使用 Apache-2.0。GBA-Zynq7020 将此库作为项目源码的一部分，并在 `config/dependencies.lock.json` 锁定其版本与包哈希。
+该软件包使用 Apache-2.0。GBA-Zynq7020 将此库作为项目源码的一部分，并在 `fpga-project.toml` 声明版本与包来源。FPGAFlow 根据实际文件生成输入锁。
 
 ## 源码构建
 
-源码开发基线为 Vivado 2025.2.1。工具版本锁定于 `tools/video_flow.py`。常用维护流程：
+源码开发基线为 Vivado 2025.2.1。工具版本与测试台定义保存在 `fpga-project.toml`。常用维护流程：
 
 ```sh
-python tools/video_flow.py build --vivado /path/to/vivado
-python tools/package_release.py --vivado-version 2025.2.1
+fpga-flow inventory --project fpga-project.toml
+fpga-flow build --project fpga-project.toml --stage release --with-deps
 ```
 
-构建输出位于 `out/`，发布包位于 `out/releases/`。源文件与发布资产版本通过 `VERSION`、Git tag 和 `RELEASE-METADATA.json` 关联。
+构建输出位于 `build/fpga-flow/runs/<run-id>/`，发布包位于发布 run 的 `work/artifacts/releases/`。`build/fpga-flow/current/` 提供当前交付视图。主机工具路径在仓库外的 FPGAFlow 本地配置中设置。源文件与发布资产版本通过 `VERSION`、Git tag 和 `RELEASE-METADATA.json` 关联。

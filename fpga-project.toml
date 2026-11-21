@@ -1,144 +1,186 @@
 schema_version = 1
 
-[[bench]]
+[project]
+id = "embedded-video-ip"
+name = "EmbeddedVideoIP"
+profile = "vivado-ip-package"
+
+[tools]
+vivado_version = "2025.2.1"
+
+[ip_package]
+component_xml = "ip_repo/panfpga/embedded_video_ip/component.xml"
+version_file = "VERSION"
+source_roots = ["ip/video_pipeline_1_0", "ip_repo/if", "software", "contracts", "LICENSES"]
+
+[tests]
+source_roots = ["tests"]
+default_success_markers = ["TEST_PASS:"]
+
+[tests.suite_stages]
+default = "sim"
+
+[build]
+output_dir = "build/fpga-flow"
+
+[[tests.bench]]
 name = "tb_axis_video_nn_scaler"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler.sv"]
 top = "tb_axis_video_nn_scaler"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_axis_video_nn_scaler_bram"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler.sv"]
 top = "tb_axis_video_nn_scaler_bram"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_axis_video_nn_scaler_output_dims"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler_output_dims.sv"]
 top = "tb_axis_video_nn_scaler_output_dims"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_axis_video_nn_scaler_native_input"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler_native_input.sv"]
 top = "tb_axis_video_nn_scaler_native_input"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_axis_video_nn_scaler_native_input_bram"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "tests/rtl/tb_axis_video_nn_scaler_native_input.sv"]
 top = "tb_axis_video_nn_scaler_native_input_bram"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_video_bram_rgb565_reader"
 sources = ["ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "tests/rtl/tb_video_bram_rgb565_reader.sv"]
 top = "tb_video_bram_rgb565_reader"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_video_pipeline_v1_0"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_v1_0.sv"]
 top = "tb_video_pipeline_v1_0"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_video_pipeline_output_mode"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
 top = "tb_video_pipeline_output_mode"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_video_pipeline_static_profile"
 sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_static_profile.sv"]
 top = "tb_video_pipeline_static_profile"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_runtime_status"
 sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_runtime_status.sv", "tests/rtl/tb_hdmi_runtime_status.sv"]
 top = "tb_hdmi_runtime_status"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_gain_bus_cdc"
 sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_gain_bus_cdc.sv", "tests/rtl/tb_hdmi_gain_bus_cdc.sv"]
 top = "tb_hdmi_gain_bus_cdc"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_mode_transition_ctrl"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_mode_transition_ctrl.sv", "tests/rtl/tb_hdmi_mode_transition_ctrl.sv"]
 top = "tb_hdmi_mode_transition_ctrl"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_boot_timing_path"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_video_timing_gen.sv", "ip/video_pipeline_1_0/hdl/hdmi_mode_transition_ctrl.sv", "tests/rtl/tb_hdmi_boot_timing_path.sv"]
 top = "tb_hdmi_boot_timing_path"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_video_timing_gen"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_video_timing_gen.sv", "tests/rtl/tb_hdmi_video_timing_gen.sv"]
 top = "tb_hdmi_video_timing_gen"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_clock_profile_mux"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv", "tests/rtl/tb_hdmi_clock_profile_mux.sv"]
 top = "tb_hdmi_clock_profile_mux"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_primitives"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_symbol_encoder.sv", "tests/rtl/tb_hdmi_primitives.sv"]
 top = "tb_hdmi_primitives"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_audio_packets"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "tests/rtl/tb_hdmi_audio_packets.sv"]
 top = "tb_hdmi_audio_packets"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_audio_pcm_async_fifo"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "tests/rtl/tb_audio_pcm_async_fifo.sv"]
 top = "tb_audio_pcm_async_fifo"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_packet_assembler"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_packet_assembler.sv"]
 top = "tb_hdmi_packet_assembler"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_line_slot_scheduler"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "tests/rtl/tb_hdmi_line_slot_scheduler.sv"]
 top = "tb_hdmi_line_slot_scheduler"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_tmds_mode_mux"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "tests/rtl/tb_hdmi_tmds_mode_mux.sv"]
 top = "tb_hdmi_tmds_mode_mux"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_video_encoder"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "tests/rtl/tb_hdmi_video_encoder.sv"]
 top = "tb_hdmi_video_encoder"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_color_avi_infoframe"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_color_avi_infoframe.sv"]
 top = "tb_hdmi_color_avi_infoframe"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_7series_output_serdes"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "tests/rtl/tb_hdmi_7series_output_serdes.sv"]
 top = "tb_hdmi_7series_output_serdes"
 defines = ["SYNTHESIS"]
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_pcm_packet_source"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_pcm_packet_source.sv"]
 top = "tb_hdmi_pcm_packet_source"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_hdmi_pcm_profile_rates"
 sources = ["ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "tests/rtl/tb_hdmi_pcm_profile_rates.sv"]
 top = "tb_hdmi_pcm_profile_rates"
 
-[[bench]]
+[[tests.bench]]
 name = "tb_embedded_video_ip_7series_tx"
 artifacts = ["hdmi_tx_line_start.bmp"]
 sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv", "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "tests/rtl/tb_embedded_video_ip_7series_tx.sv"]
 top = "tb_embedded_video_ip_7series_tx"
+
+
+[adapters.sim]
+command = ["python3", "tools/video_flow.py", "sim"]
+inputs = ["tools/video_flow.py", "tools/rtl_manifest.py", "tools/run_video_tests.py", "tools/run_video_tests.sh"]
+outputs = ["build/fpga-flow/tests/**/run.log", "build/fpga-flow/tests/video-tests.log"]
+success_markers = ["VIDEO_TESTS_PASS"]
+
+[adapters.package]
+command = ["python3", "tools/video_flow.py", "validate"]
+inputs = ["tools/video_flow.py", "tools/package_all.tcl", "tools/package_ip.tcl", "tools/package_composite_ip.tcl", "tools/generate_package_metadata.py", "tools/validate_ip_catalog.tcl", "tools/synth_composite.tcl", "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc"]
+outputs = ["build/fpga-flow/packages/ip_repo", "build/fpga-flow/ip_catalog_validation_feature_profile"]
+success_markers = ["EMBEDDED_VIDEO_IP_CATALOG_PASS"]
+
+[adapters.release]
+command = ["python3", "tools/package_release.py", "--root", "{root}", "--output", "{out_dir}/artifacts/releases", "--vivado-version", "2025.2.1"]
+inputs = ["tools/package_release.py", "VERSION", "LICENSES/**", "docs/ip-package-quickstart.md", "software/video_out.c", "software/video_out.h", "software/platforms/xilinx_zynq7000/**"]
+outputs = ["build/fpga-flow/artifacts/releases/EmbeddedVideoIP-{package_version}-vivado-2025.2.1.zip", "build/fpga-flow/artifacts/releases/EmbeddedVideoIP-PS-Zynq7000-{package_version}.zip", "build/fpga-flow/artifacts/releases/SHA256SUMS"]
+success_markers = ["EMBEDDED_VIDEO_IP_RELEASE_PASS"]

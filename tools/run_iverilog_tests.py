@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
-import tomllib
 
 from rtl_manifest import load_rtl_manifest
 from run_video_tests import _has_failure
@@ -21,21 +21,12 @@ def main() -> int:
     parser.add_argument("--vvp", default="vvp")
     parser.add_argument("--backend", help="optional Icarus backend directory")
     args = parser.parse_args()
-    with (ROOT / "tests/rtl_manifest.toml").open("rb") as stream:
-        raw = tomllib.load(stream)
-    selected: set[str] = set()
-    for entry in raw["bench"]:
-        enabled = entry.get("iverilog", False)
-        if type(enabled) is not bool:
-            raise ValueError(f"{entry.get('name')}: iverilog must be boolean")
-        if enabled:
-            selected.add(entry["name"])
-    benches = [bench for bench in load_rtl_manifest(ROOT) if bench.name in selected]
+    benches = [bench for bench in load_rtl_manifest(ROOT) if bench.iverilog]
     if not benches:
         raise RuntimeError("RTL manifest has no Icarus-compatible benches")
     failures: list[str] = []
     for bench in benches:
-        out = ROOT / "out/ci/iverilog" / bench.name
+        out = Path(os.environ.get("FPGA_FLOW_OUTPUT_DIR", str(ROOT / "build/fpga-flow"))) / "tests/iverilog" / bench.name
         out.mkdir(parents=True, exist_ok=True)
         command = [args.iverilog]
         if args.backend:

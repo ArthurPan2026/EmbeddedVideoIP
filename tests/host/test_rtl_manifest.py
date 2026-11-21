@@ -24,7 +24,7 @@ class RTLManifestTests(unittest.TestCase):
             self.assertTrue(bench.sources)
             self.assertTrue(set(bench.success_markers) & set(DEFAULT_SUCCESS_MARKERS))
             self.assertTrue(all((ROOT / source).is_file() for source in bench.sources))
-            self.assertEqual(bench.output_log, f"out/tests/{bench.name}/run.log")
+            self.assertEqual(bench.output_log, f"build/fpga-flow/tests/rtl/{bench.name}/run.log")
 
     def test_manifest_is_the_runner_source_of_truth(self) -> None:
         benches = load_rtl_manifest(ROOT)
@@ -34,8 +34,8 @@ class RTLManifestTests(unittest.TestCase):
         self.assertNotIn("tb_hdmi_pcm_profile_rates \\", runner_source)
         self.assertEqual(
             {path.relative_to(ROOT).as_posix() for path in manifest_output_paths(ROOT)},
-            {f"out/tests/{name}/run.log" for name in names}
-            | {f"out/tests/{bench.name}/{artifact}" for bench in benches for artifact in bench.artifacts},
+            {f"build/fpga-flow/tests/rtl/{name}/run.log" for name in names}
+            | {f"build/fpga-flow/tests/rtl/{bench.name}/{artifact}" for bench in benches for artifact in bench.artifacts},
         )
         sources = {path.relative_to(ROOT).as_posix() for path in manifest_source_paths(ROOT)}
         self.assertTrue(sources)
@@ -47,7 +47,7 @@ class RTLManifestTests(unittest.TestCase):
         selected = set(video_flow.input_manifest("sim", ROOT))
         for path in manifest_source_paths(ROOT):
             self.assertIn(path.relative_to(ROOT).as_posix(), selected)
-        self.assertIn("tests/rtl_manifest.toml", selected)
+        self.assertIn("fpga-project.toml", selected)
         self.assertIn("tools/rtl_manifest.py", selected)
 
 

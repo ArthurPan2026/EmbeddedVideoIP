@@ -36,6 +36,7 @@ class RTLBench:
     resources: tuple[str, ...]
     artifacts: tuple[str, ...] = ()
     suite: str | None = None
+    iverilog: bool = False
 
 
 def _safe_relative(value: object, where: str) -> str:
@@ -77,7 +78,7 @@ def _timeout(value: object, where: str) -> int | None:
 
 def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
     """Load, validate, and resolve the project RTL manifest."""
-    manifest_path = root / "tests" / "rtl_manifest.toml"
+    manifest_path = root / "fpga-project.toml"
     try:
         with manifest_path.open("rb") as stream:
             raw: Any = tomllib.load(stream)
@@ -88,9 +89,10 @@ def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
             f"unsupported RTL manifest schema in {manifest_path}: "
             f"{raw.get('schema_version')!r}"
         )
-    entries = raw.get("bench")
+    tests = raw.get("tests")
+    entries = tests.get("bench") if isinstance(tests, dict) else None
     if not isinstance(entries, list) or not entries:
-        raise RTLManifestError("tests/rtl_manifest.toml must contain at least one [[bench]]")
+        raise RTLManifestError("fpga-project.toml must contain at least one [[tests.bench]]")
     benches: list[RTLBench] = []
     names: set[str] = set()
     outputs: set[str] = set()
@@ -117,20 +119,21 @@ def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
             if not path.is_file() or path.is_symlink():
                 raise RTLManifestError(f"{where}.sources contains missing or linked file: {source}")
         defines = _string_list(item.get("defines"), f"{where}.defines")
+        default_markers = tests.get("default_success_markers", list(DEFAULT_SUCCESS_MARKERS))
         markers = _string_list(
-            item.get("success_markers"),
+            item.get("success_markers", default_markers),
             f"{where}.success_markers",
             default=DEFAULT_SUCCESS_MARKERS,
         )
         if not markers:
             raise RTLManifestError(f"{where}.success_markers must not be empty")
         output_log = _safe_relative(
-            item.get("output_log", f"out/tests/{name}/run.log"),
+            item.get("output_log", f"build/fpga-flow/tests/rtl/{name}/run.log"),
             f"{where}.output_log",
         )
-        if not output_log.startswith("out/tests/") or not output_log.endswith("/run.log"):
+        if not output_log.startswith("build/fpga-flow/tests/") or not output_log.endswith("/run.log"):
             raise RTLManifestError(
-                f"{where}.output_log must be under out/tests and end in /run.log"
+                f"{where}.output_log must be under build/fpga-flow/tests and end in /run.log"
             )
         if output_log.casefold() in outputs:
             raise RTLManifestError(f"{where}.output_log is duplicated: {output_log}")
@@ -154,6 +157,7 @@ def load_rtl_manifest(root: Path) -> tuple[RTLBench, ...]:
             resources=resources,
             artifacts=artifacts,
             suite=suite.strip() if isinstance(suite, str) else None,
+            iverilog=_bool(item.get("iverilog"), f"{where}.iverilog", False),
         )
         names.add(name.casefold())
         outputs.add(output_log.casefold())

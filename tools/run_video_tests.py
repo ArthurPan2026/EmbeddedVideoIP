@@ -121,7 +121,7 @@ def _write_state(run_dir: Path, payload: dict[str, object]) -> None:
 
 
 def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: str, *, resume: bool = True) -> None:
-    run_dir = out_root / Path(bench.output_log).relative_to("out/tests").parent
+    run_dir = out_root / Path(bench.output_log).relative_to("build/fpga-flow/tests").parent
     run_dir.mkdir(parents=True, exist_ok=True)
     fingerprint = _fingerprint(bench, vivado_bin, tool_version)
     if resume and _resume_hit(bench, run_dir, fingerprint):
@@ -259,7 +259,7 @@ def main() -> int:
             parser.error("unknown bench: " + ", ".join(unknown))
         benches = [bench for bench in benches if bench.name in selected]
     vivado_bin = Path(args.vivado_bin)
-    out_root = ROOT / "out" / "tests"
+    out_root = Path(os.environ.get("FPGA_FLOW_OUTPUT_DIR", str(ROOT / "build/fpga-flow"))) / "tests"
     out_root.mkdir(parents=True, exist_ok=True)
     tool_version = _vivado_version(vivado_bin)
     _run_benches(benches, vivado_bin, out_root, args.jobs, not args.no_resume, tool_version)
@@ -282,9 +282,12 @@ def main() -> int:
         check=True,
     )
     subprocess.run([str(test_video_out)], check=True)
+    host_env = {key: value for key, value in os.environ.items()
+                if not key.startswith("FPGA_FLOW_")}
+    host_env["PYTHONPATH"] = str(ROOT) + os.pathsep + host_env.get("PYTHONPATH", "")
     subprocess.run(
         [args.python, "-m", "unittest", "discover", "-s", str(ROOT / "tests/host"), "-v"],
-        check=True,
+        check=True, cwd=ROOT, env=host_env,
     )
     print("VIDEO_SELECTED_TESTS_PASS" if args.bench else "VIDEO_TESTS_PASS")
     return 0

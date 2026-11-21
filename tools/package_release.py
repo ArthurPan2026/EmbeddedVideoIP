@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
@@ -42,8 +43,15 @@ def main() -> int:
     parser.add_argument("--vivado-version", required=True)
     args = parser.parse_args()
     root = args.root.resolve()
-    ip_repo = (args.ip_repo or root / "out/packages/ip_repo").resolve()
-    output = (args.output or root / "out/releases").resolve()
+    dependency_repo = None
+    if args.ip_repo is None and "FPGA_FLOW_DEPENDENCIES_JSON" in os.environ:
+        outputs = json.loads(os.environ["FPGA_FLOW_DEPENDENCIES_JSON"]).get("package", {}).get("outputs", {})
+        matches = [name for name in outputs if name.endswith("/packages/ip_repo")]
+        if len(matches) != 1:
+            raise ValueError("package dependency must provide exactly one IP repository")
+        dependency_repo = root / matches[0]
+    ip_repo = (args.ip_repo or dependency_repo or root / "build/fpga-flow/packages/ip_repo").resolve()
+    output = (args.output or root / "build/fpga-flow/releases").resolve()
     version = (root / "VERSION").read_text(encoding="utf-8").strip()
     ip_root = ip_repo / "panfpga/embedded_video_ip"
     component = ip_root / "component.xml"
@@ -133,6 +141,7 @@ def main() -> int:
     print(f"IP_PACKAGE={ip_archive}")
     print(f"PS_PACKAGE={ps_archive}")
     print(f"SHA256SUMS={output / 'SHA256SUMS'}")
+    print("EMBEDDED_VIDEO_IP_RELEASE_PASS")
     return 0
 
 

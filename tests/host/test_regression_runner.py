@@ -24,14 +24,14 @@ class RegressionRunnerTests(unittest.TestCase):
         (self.root / "src/bench.sv").write_text("module bench; endmodule\n")
         (self.root / "tools/rtl_manifest.py").write_text("manifest loader\n")
         self.bench = RTLBench(name="bench", top="bench", sources=("src/bench.sv",),
-            defines=(), success_markers=("TEST_PASS:",), output_log="out/tests/bench/run.log",
+            defines=(), success_markers=("TEST_PASS:",), output_log="build/fpga-flow/tests/bench/run.log",
             timeout_seconds=20, parallel=True, resources=(), artifacts=("frame.bmp",))
         self.patch = patch.object(runner, "ROOT", self.root)
         self.patch.start()
         self.addCleanup(self.patch.stop)
 
     def test_cache_is_bound_to_version_inputs_and_declared_output_contents(self) -> None:
-        out = self.root / "out/tests/bench"
+        out = self.root / "build/fpga-flow/tests/bench"
         out.mkdir(parents=True)
         log = out / "run.log"
         log.write_text("TEST_PASS: done\n")

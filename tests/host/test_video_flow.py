@@ -131,7 +131,7 @@ class VideoFlowProfileTests(unittest.TestCase):
 
         command = run_stage.call_args.args[1]
         self.assertEqual(run_stage.call_args.args[0], "synth")
-        self.assertIn("profiles/vdma_scaler_lutram", command[command.index("-tclargs") + 3])
+        self.assertIn("profiles/vdma_scaler_lutram", Path(command[command.index("-tclargs") + 3]).as_posix())
         forwarded = set(command[command.index("-tclargs") + 4:])
         self.assertIn("ENABLE_BRAM_SOURCE=0", forwarded)
         self.assertIn("ENABLE_HLS_SOURCE=0", forwarded)
@@ -152,7 +152,7 @@ class VideoFlowProfileTests(unittest.TestCase):
 
         command = run_stage.call_args.args[1]
         self.assertTrue(any("synth_composite.tcl" in arg for arg in command))
-        self.assertIn("profiles/composite_audio_on", command[command.index("-tclargs") + 4])
+        self.assertIn("profiles/composite_audio_on", Path(command[command.index("-tclargs") + 4]).as_posix())
         self.assertIn("ENABLE_HDMI_AUDIO=1", command)
         self.assertEqual(run_stage.call_args.kwargs["success_marker"], "EMBEDDED_VIDEO_IP_SYNTH_PASS")
 
@@ -218,10 +218,10 @@ class VideoFlowProfileTests(unittest.TestCase):
                     runner=runner_for(profile), success_marker="VIDEO_SYNTH_PASS",
                 )
 
-            generic_dir = root / "out/synth" / part
-            lutram_dir = root / "out/synth" / part / "profiles/vdma_scaler_lutram"
-            bram_dir = root / "out/synth" / part / "profiles/vdma_scaler_bram"
-            passthrough_dir = root / "out/synth" / part / "profiles/passthrough"
+            generic_dir = root / "build/fpga-flow/synth" / part
+            lutram_dir = root / "build/fpga-flow/synth" / part / "profiles/vdma_scaler_lutram"
+            bram_dir = root / "build/fpga-flow/synth" / part / "profiles/vdma_scaler_bram"
+            passthrough_dir = root / "build/fpga-flow/synth" / part / "profiles/passthrough"
             generic_before = (generic_dir / "utilization.rpt").read_text(encoding="utf-8")
             self.assertEqual((lutram_dir / "utilization.rpt").read_text(encoding="utf-8"), UTILIZATION_FIXTURE)
             self.assertTrue((bram_dir / "qor.json").is_file())
@@ -314,7 +314,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv",
             "ip_repo/if/tmds_v1_0/tmds.xml",
             "ip_repo/if/tmds_v1_0/tmds_rtl.xml",
-            "dependencies.lock.json",
+            "fpga-project.toml",
             "contracts/video_contract.json",
             "contracts/pcm_contract.json",
             "software/video_out.c",
@@ -323,7 +323,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             "software/platforms/xilinx_zynq7000/video_out_xilinx.h",
             "software/unrelated_ps.c",
             "VERSION",
-            "tests/rtl_manifest.toml",
+            "fpga-project.toml",
             "tools/run_video_tests.py",
             "tests/host/test_video_out.c",
             "tests/host/test_install_ps_library.py",
@@ -340,8 +340,8 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             path = root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"fixture:{relative}\n", encoding="utf-8")
-        (root / "tests/rtl_manifest.toml").write_text(
-            (video_flow.ROOT / "tests/rtl_manifest.toml").read_text(encoding="utf-8"),
+        (root / "fpga-project.toml").write_text(
+            (video_flow.ROOT / "fpga-project.toml").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
 
@@ -383,7 +383,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("tools/package_ip.tcl", package)
             self.assertIn("tools/package_composite_ip.tcl", package)
             self.assertIn("tools/package_all.tcl", package)
-            self.assertIn("dependencies.lock.json", package)
+            self.assertIn("fpga-project.toml", package)
             self.assertIn("ip_repo/if/tmds_v1_0/tmds.xml", package)
             self.assertIn("ip_repo/if/tmds_v1_0/tmds_rtl.xml", package)
             self.assertFalse(any(path.endswith((".vhd", ".vhdl")) for path in package))
@@ -410,10 +410,10 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("tools/run_video_tests.sh", sim)
             self.assertIn("tools/run_video_tests.py", sim)
             self.assertIn("tools/rtl_manifest.py", sim)
-            self.assertIn("tests/rtl_manifest.toml", sim)
+            self.assertIn("fpga-project.toml", sim)
             self.assertNotIn("docs/architecture.md", sim)
             runner = (video_flow.ROOT / "tools/run_video_tests.sh").read_text(encoding="utf-8")
-            manifest = (video_flow.ROOT / "tests/rtl_manifest.toml").read_text(encoding="utf-8")
+            manifest = (video_flow.ROOT / "fpga-project.toml").read_text(encoding="utf-8")
             for bench in (
                 "tb_hdmi_clock_profile_mux",
                 "tb_hdmi_mode_transition_ctrl",
@@ -428,18 +428,18 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("run_video_tests.py", runner)
             self.assertNotIn("xvhdl", runner)
 
-            packaged_root = root / "out/packages/ip_repo/panfpga/video_pipeline"
-            composite_root = root / "out/packages/ip_repo/panfpga/embedded_video_ip"
+            packaged_root = root / "build/fpga-flow/packages/ip_repo/panfpga/video_pipeline"
+            composite_root = root / "build/fpga-flow/packages/ip_repo/panfpga/embedded_video_ip"
             for package_root in (packaged_root, composite_root):
                 (package_root / "src").mkdir(parents=True)
                 (package_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
                 (package_root / "src/hdl.sv").write_text("packaged RTL\n", encoding="utf-8")
             catalog = set(video_flow.input_manifest("ip_catalog", root))
             self.assertIn("tools/validate_ip_catalog.tcl", catalog)
-            self.assertIn("out/packages/ip_repo/panfpga/video_pipeline/component.xml", catalog)
-            self.assertIn("out/packages/ip_repo/panfpga/embedded_video_ip/component.xml", catalog)
-            self.assertIn("out/packages/ip_repo/panfpga/video_pipeline/src/hdl.sv", catalog)
-            self.assertIn("out/packages/ip_repo/panfpga/embedded_video_ip/src/hdl.sv", catalog)
+            self.assertIn("build/fpga-flow/packages/ip_repo/panfpga/video_pipeline/component.xml", catalog)
+            self.assertIn("build/fpga-flow/packages/ip_repo/panfpga/embedded_video_ip/component.xml", catalog)
+            self.assertIn("build/fpga-flow/packages/ip_repo/panfpga/video_pipeline/src/hdl.sv", catalog)
+            self.assertIn("build/fpga-flow/packages/ip_repo/panfpga/embedded_video_ip/src/hdl.sv", catalog)
             self.assertNotIn("tools/package_ip.tcl", catalog)
             self.assertNotIn("software/video_out.c", catalog)
             before_catalog = video_flow.input_manifest("ip_catalog", root)
@@ -501,15 +501,15 @@ class VideoFlowCacheTests(unittest.TestCase):
             def runner(command, cwd, text, capture_output, check, env):
                 calls.append(command)
                 for package_root in (
-                    root / "out/packages/ip_repo/panfpga/video_pipeline",
-                    root / "out/packages/ip_repo/panfpga/embedded_video_ip",
+                    root / "build/fpga-flow/packages/ip_repo/panfpga/video_pipeline",
+                    root / "build/fpga-flow/packages/ip_repo/panfpga/embedded_video_ip",
                 ):
                     (package_root / "src").mkdir(parents=True, exist_ok=True)
                     (package_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
                     (package_root / "src/hdl.sv").write_text(
                         "module video_pipeline; endmodule\n", encoding="utf-8"
                     )
-                project_dir = root / "out/package_composite_project"
+                project_dir = root / "build/fpga-flow/package_composite_project"
                 required = (
                     "embedded_video_ip_package.xpr",
                     "embedded_video_ip_package.srcs/sources_1/bd/embedded_video_ip_video_out/embedded_video_ip_video_out.bd",
@@ -540,7 +540,7 @@ class VideoFlowCacheTests(unittest.TestCase):
             ))
             self.assertEqual(len(calls), 1)
 
-            (root / "out/packages/ip_repo/panfpga/embedded_video_ip/src/hdl.sv").write_text(
+            (root / "build/fpga-flow/packages/ip_repo/panfpga/embedded_video_ip/src/hdl.sv").write_text(
                 "tampered\n", encoding="utf-8"
             )
             self.assertTrue(video_flow.run_stage(
@@ -569,7 +569,7 @@ class VideoFlowCacheTests(unittest.TestCase):
             )
             self.assertEqual(runner.call_count, 2)
 
-            report = root / "out/synth/xc7z020clg400-1/timing_summary.rpt"
+            report = root / "build/fpga-flow/synth/xc7z020clg400-1/timing_summary.rpt"
             report.write_text("tampered\n", encoding="utf-8")
             video_flow.run_stage(
                 "synth", command, Path("/fake/vivado"), {"rtl": "v2"},
@@ -622,8 +622,8 @@ class VideoFlowCacheTests(unittest.TestCase):
             calls: list[list[str]] = []
             (root / "tests/rtl").mkdir(parents=True, exist_ok=True)
             (root / "tests/rtl/tb_fixture.sv").write_text("module tb_fixture; endmodule\n", encoding="utf-8")
-            (root / "tests/rtl_manifest.toml").write_text(
-                'schema_version = 1\n\n[[bench]]\n'
+            (root / "fpga-project.toml").write_text(
+                'schema_version = 1\n\n[[tests.bench]]\n'
                 'name = "tb_fixture"\n'
                 'sources = ["tests/rtl/tb_fixture.sv"]\n'
                 'top = "tb_fixture"\n'
@@ -687,7 +687,7 @@ class VideoFlowCacheTests(unittest.TestCase):
                 "xc7z020clg400-1", root=root, tool_version="2025.2.1",
                 runner=runner, success_marker="VIDEO_SYNTH_PASS",
             )
-            (root / "out/synth/xc7z020clg400-1/video_pipeline.dcp").unlink()
+            (root / "build/fpga-flow/synth/xc7z020clg400-1/video_pipeline.dcp").unlink()
             video_flow.run_stage(
                 "synth", command, Path("/fake/vivado"), inputs,
                 "xc7z020clg400-1", root=root, tool_version="2025.2.1",

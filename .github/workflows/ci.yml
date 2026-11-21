@@ -23,9 +23,9 @@ jobs:
           sudo apt-get install -y iverilog
       - name: Run host regression
         run: |
-          mkdir -p out/ci
-          gcc -std=c99 -Wall -Wextra -Werror -pedantic -Isoftware software/video_out.c tests/host/test_video_out.c -o out/ci/test_video_out
-          out/ci/test_video_out
+          mkdir -p build/fpga-flow/ci
+          gcc -std=c99 -Wall -Wextra -Werror -pedantic -Isoftware software/video_out.c tests/host/test_video_out.c -o build/fpga-flow/ci/test_video_out
+          build/fpga-flow/ci/test_video_out
           python -m unittest discover -s tests/host -v
       - name: Run portable RTL regression
         run: python tools/run_iverilog_tests.py
@@ -34,5 +34,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: portable-rtl-logs
-          path: out/ci/iverilog/*/*.log
+          path: build/fpga-flow/tests/iverilog/*/*.log
           if-no-files-found: ignore

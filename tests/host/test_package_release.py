@@ -18,7 +18,7 @@ class ReleasePackageTests(unittest.TestCase):
             work = Path(directory)
             project = work / "project"
             output = work / "release"
-            package = project / "out/packages/ip_repo"
+            package = project / "build/fpga-flow/packages/ip_repo"
             composite = package / "panfpga/embedded_video_ip"
             interface = package / "if/tmds_v1_0"
             composite.mkdir(parents=True)
