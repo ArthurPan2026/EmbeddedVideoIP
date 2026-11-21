@@ -1,0 +1,46 @@
+name: EmbeddedVideoIP release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    if: vars.VIVADO_RELEASE_RUNNER_ENABLED == 'true'
+    runs-on: [self-hosted, linux, x64, vivado-2025.2.1]
+    timeout-minutes: 180
+    env:
+      VIVADO_BIN: /tools/AMDDesignTools/2025.2.1/Vivado/bin/vivado
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - name: Match release tag and source version
+        run: |
+          test "${GITHUB_REF_NAME#v}" = "$(cat VERSION)"
+          "$VIVADO_BIN" -version
+      - name: Run portable host regression
+        run: |
+          gcc -std=c99 -Wall -Wextra -Werror -pedantic -Isoftware software/video_out.c tests/host/test_video_out.c -o /tmp/test_video_out
+          /tmp/test_video_out
+          python -m unittest discover -s tests/host -v
+      - name: Build, simulate, package, validate, and synthesize
+        run: python tools/video_flow.py build --vivado "$VIVADO_BIN" --part xc7z020clg400-1 --profile generic
+      - name: Create consumer release archives
+        run: python tools/package_release.py --vivado-version 2025.2.1
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(mktemp)"
+          printf '%s\n' "EmbeddedVideoIP $(cat VERSION)" "" "Vivado 2025.2.1" "" "Assets:" "- Vivado IP Catalog package for consumer projects." "- Zynq-7000 PS C library package." "- SHA256SUMS and per-package RELEASE-METADATA.json." > "$notes"
+          args=("$GITHUB_REF_NAME" out/releases/EmbeddedVideoIP-*-vivado-2025.2.1.zip out/releases/EmbeddedVideoIP-PS-Zynq7000-*.zip out/releases/SHA256SUMS --title "$GITHUB_REF_NAME" --notes-file "$notes")
+          if [[ "$GITHUB_REF_NAME" == *-dev* || "$GITHUB_REF_NAME" == *-alpha* || "$GITHUB_REF_NAME" == *-beta* || "$GITHUB_REF_NAME" == *-rc* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

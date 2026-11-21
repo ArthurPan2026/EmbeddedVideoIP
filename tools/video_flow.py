@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -24,7 +25,8 @@ MANIFEST_SCHEMA_VERSION = 3
 INPUT_PARTITION_VERSION = 4
 LOCK = json.loads((ROOT / "dependencies.lock.json").read_text(encoding="utf-8"))
 PRODUCT_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-DEFAULT_VIVADO = Path("/tools/AMDDesignTools/2025.2.1/Vivado/bin/vivado")
+DEFAULT_VIVADO = Path("vivado")
+PACKAGE_REPO = OUT / "packages/ip_repo"
 
 PACKAGE_HDL_FILES = (
     "axis_video_nn_scaler.sv",
@@ -197,8 +199,8 @@ def stage_input_paths(stage: str, root: Path = ROOT,
         ]
     elif stage == "ip_catalog":
         package_roots = [
-            root / "ip_repo/panfpga/video_pipeline",
-            root / "ip_repo/panfpga/embedded_video_ip",
+            root / "out/packages/ip_repo/panfpga/video_pipeline",
+            root / "out/packages/ip_repo/panfpga/embedded_video_ip",
         ]
         package_files = []
         for package_root in package_roots:
@@ -326,11 +328,16 @@ def write_manifest(data: dict[str, Any], root: Path = ROOT) -> None:
 
 
 def resolve_vivado(text: str | None) -> Path:
-    candidate = Path(text or os.environ.get("VIVADO_BIN", DEFAULT_VIVADO)).expanduser()
+    value = text or os.environ.get("VIVADO_BIN", str(DEFAULT_VIVADO))
+    candidate = Path(value).expanduser()
     if candidate.is_dir():
         candidate = candidate / "vivado"
+    if not candidate.is_absolute():
+        resolved = shutil.which(value)
+        if resolved:
+            candidate = Path(resolved)
     if not candidate.is_file():
-        raise FlowError(f"Vivado executable not found: {candidate}; pass --vivado or set VIVADO_BIN.")
+        raise FlowError(f"Vivado executable not found: {value}; pass --vivado or set VIVADO_BIN.")
     return candidate.resolve()
 
 
@@ -348,8 +355,8 @@ def vivado_version(vivado: Path) -> str:
 def stage_output_paths(name: str, root: Path = ROOT, part: str | None = None,
                        profile: str | None = None) -> list[Path]:
     if name == "package":
-        core_root = root / "ip_repo/panfpga/video_pipeline"
-        composite_root = root / "ip_repo/panfpga/embedded_video_ip"
+        core_root = root / "out/packages/ip_repo/panfpga/video_pipeline"
+        composite_root = root / "out/packages/ip_repo/panfpga/embedded_video_ip"
         paths = [*_tree_files(core_root), *_tree_files(composite_root), *_tree_files(root / "ip_repo/if")]
         if not (core_root / "component.xml").is_file():
             raise FlowError(f"Internal video IP is missing: {core_root / 'component.xml'}")
@@ -660,7 +667,7 @@ def command_package(args: argparse.Namespace, validate: bool = False) -> None:
     version = vivado_version(vivado)
     package = [
         str(vivado), "-mode", "batch", "-source", str(ROOT / "tools/package_all.tcl"),
-        "-tclargs", str(ROOT), str(ROOT / "ip_repo"),
+        "-tclargs", str(ROOT), str(ROOT / "out/packages/ip_repo"),
         str(ROOT / "out/package_composite_project"),
     ]
     package_env = os.environ.copy()
@@ -673,7 +680,7 @@ def command_package(args: argparse.Namespace, validate: bool = False) -> None:
         validation = [
             str(vivado), "-mode", "batch",
             "-source", str(ROOT / "tools/validate_ip_catalog.tcl"),
-            "-tclargs", str(ROOT), str(ROOT / "ip_repo"),
+            "-tclargs", str(ROOT), str(ROOT / "out/packages/ip_repo"),
             str(ROOT / "out/ip_catalog_validation_feature_profile"),
         ]
         run_stage(
@@ -694,7 +701,7 @@ def command_synth(args: argparse.Namespace) -> None:
         script = ROOT / "tools/synth_composite.tcl"
         command = [
             str(vivado), "-mode", "batch", "-source", str(script),
-            "-tclargs", str(ROOT), str(ROOT / "ip_repo"), part,
+            "-tclargs", str(ROOT), str(ROOT / "out/packages/ip_repo"), part,
             str(output_dir), profile, *generic_args,
         ]
     else:

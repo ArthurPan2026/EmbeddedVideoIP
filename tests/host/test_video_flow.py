@@ -428,18 +428,18 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             self.assertIn("run_video_tests.py", runner)
             self.assertNotIn("xvhdl", runner)
 
-            packaged_root = root / "ip_repo/panfpga/video_pipeline"
-            composite_root = root / "ip_repo/panfpga/embedded_video_ip"
+            packaged_root = root / "out/packages/ip_repo/panfpga/video_pipeline"
+            composite_root = root / "out/packages/ip_repo/panfpga/embedded_video_ip"
             for package_root in (packaged_root, composite_root):
                 (package_root / "src").mkdir(parents=True)
                 (package_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
                 (package_root / "src/hdl.sv").write_text("packaged RTL\n", encoding="utf-8")
             catalog = set(video_flow.input_manifest("ip_catalog", root))
             self.assertIn("tools/validate_ip_catalog.tcl", catalog)
-            self.assertIn("ip_repo/panfpga/video_pipeline/component.xml", catalog)
-            self.assertIn("ip_repo/panfpga/embedded_video_ip/component.xml", catalog)
-            self.assertIn("ip_repo/panfpga/video_pipeline/src/hdl.sv", catalog)
-            self.assertIn("ip_repo/panfpga/embedded_video_ip/src/hdl.sv", catalog)
+            self.assertIn("out/packages/ip_repo/panfpga/video_pipeline/component.xml", catalog)
+            self.assertIn("out/packages/ip_repo/panfpga/embedded_video_ip/component.xml", catalog)
+            self.assertIn("out/packages/ip_repo/panfpga/video_pipeline/src/hdl.sv", catalog)
+            self.assertIn("out/packages/ip_repo/panfpga/embedded_video_ip/src/hdl.sv", catalog)
             self.assertNotIn("tools/package_ip.tcl", catalog)
             self.assertNotIn("software/video_out.c", catalog)
             before_catalog = video_flow.input_manifest("ip_catalog", root)
@@ -501,8 +501,8 @@ class VideoFlowCacheTests(unittest.TestCase):
             def runner(command, cwd, text, capture_output, check, env):
                 calls.append(command)
                 for package_root in (
-                    root / "ip_repo/panfpga/video_pipeline",
-                    root / "ip_repo/panfpga/embedded_video_ip",
+                    root / "out/packages/ip_repo/panfpga/video_pipeline",
+                    root / "out/packages/ip_repo/panfpga/embedded_video_ip",
                 ):
                     (package_root / "src").mkdir(parents=True, exist_ok=True)
                     (package_root / "component.xml").write_text("<component/>\n", encoding="utf-8")
@@ -540,7 +540,7 @@ class VideoFlowCacheTests(unittest.TestCase):
             ))
             self.assertEqual(len(calls), 1)
 
-            (root / "ip_repo/panfpga/embedded_video_ip/src/hdl.sv").write_text(
+            (root / "out/packages/ip_repo/panfpga/embedded_video_ip/src/hdl.sv").write_text(
                 "tampered\n", encoding="utf-8"
             )
             self.assertTrue(video_flow.run_stage(

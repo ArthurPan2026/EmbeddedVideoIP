@@ -21,8 +21,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y iverilog
-      - name: Verify generated package identity
-        run: python tools/generate_package_metadata.py --root . --package ip_repo/panfpga/embedded_video_ip --verify
       - name: Run host regression
         run: |
           mkdir -p out/ci

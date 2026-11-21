@@ -14,7 +14,7 @@ class PackageMetadataTests(unittest.TestCase):
             canonical = root / "ip/video_pipeline_1_0/hdl"
             canonical.mkdir(parents=True)
             (canonical / "core.sv").write_text("module core; endmodule\n", encoding="utf-8")
-            package = root / "ip_repo/panfpga/embedded_video_ip"
+            package = root / "out/packages/ip_repo/panfpga/embedded_video_ip"
             (package / "src").mkdir(parents=True)
             (package / "src/core.sv").write_text("module core; endmodule\n", encoding="utf-8")
             (package / "component.xml").write_text(
@@ -37,7 +37,7 @@ class PackageMetadataTests(unittest.TestCase):
             source = root / "ip/video_pipeline_1_0/hdl/core.sv"
             source.parent.mkdir(parents=True)
             source.write_text("module core; endmodule\n")
-            package = root / "ip_repo/panfpga/embedded_video_ip"
+            package = root / "out/packages/ip_repo/panfpga/embedded_video_ip"
             (package / "src").mkdir(parents=True)
             (package / "src/core.sv").write_text(source.read_text())
             (package / "component.xml").write_text(
