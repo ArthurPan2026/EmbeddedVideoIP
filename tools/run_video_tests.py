@@ -41,9 +41,11 @@ def _vivado_version(vivado_bin: Path) -> str:
     return output
 
 
-def _fingerprint(bench: RTLBench, vivado_bin: Path, tool_version: str) -> str:
+def _fingerprint(bench: RTLBench, vivado_bin: Path, tool_version: str,
+                 sim_mode: str = "standalone") -> str:
     data = {"schema_version": 2, "bench": asdict(bench), "vivado_bin": str(vivado_bin.resolve()),
-            "vivado_version": tool_version, "runner_sha256": _hash_file(Path(__file__)),
+            "vivado_version": tool_version, "sim_mode": sim_mode,
+            "runner_sha256": _hash_file(Path(__file__)),
             "manifest_reader_sha256": _hash_file(ROOT / "tools/rtl_manifest.py"),
             "sources": {source: _hash_file(ROOT / source) for source in bench.sources}}
     return hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -120,10 +122,13 @@ def _write_state(run_dir: Path, payload: dict[str, object]) -> None:
     os.replace(temporary, run_dir / "bench.json")
 
 
-def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: str, *, resume: bool = True) -> None:
+def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: str, *,
+              resume: bool = True, sim_mode: str = "standalone") -> None:
+    if sim_mode not in {"standalone", "standard"}:
+        raise ValueError(f"unsupported Vivado simulator mode: {sim_mode}")
     run_dir = out_root / Path(bench.output_log).relative_to("build/fpga-flow/tests").parent
     run_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint = _fingerprint(bench, vivado_bin, tool_version)
+    fingerprint = _fingerprint(bench, vivado_bin, tool_version, sim_mode)
     if resume and _resume_hit(bench, run_dir, fingerprint):
         print(f"[VIDEO-CACHE] {bench.name}", flush=True)
         return
@@ -143,27 +148,25 @@ def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: s
                         command.append("-sv")
                     command.extend(["-work", "work", *(str(ROOT / source) for source in group)])
                     run_checked(command, workspace, log, bench.timeout_seconds or 900)
-                run_checked(
-                    [
-                        str(vivado_bin / "xelab"),
-                        f"work.{bench.top}",
-                        "-L",
-                        "work",
-                        "-L",
-                        "unisim",
-                        "-s",
-                        f"{bench.name}_snapshot",
-                    ],
-                    workspace,
-                    log,
-                    bench.timeout_seconds or 900,
-                )
-                run_checked(
-                    [str(vivado_bin / "xsim"), f"{bench.name}_snapshot", "-runall"],
-                    workspace,
-                    log,
-                    bench.timeout_seconds or 900,
-                )
+                elab_command = [
+                    str(vivado_bin / "xelab"),
+                    f"work.{bench.top}",
+                    "-L", "work",
+                    "-L", "unisim",
+                    "-s", f"{bench.name}_snapshot",
+                ]
+                if sim_mode == "standalone":
+                    # These benches are non-interactive and do not emit waveforms.
+                    # xelab's standalone run avoids starting a separate xsim process.
+                    elab_command.extend(["-a", "-R"])
+                run_checked(elab_command, workspace, log, bench.timeout_seconds or 900)
+                if sim_mode == "standard":
+                    run_checked(
+                        [str(vivado_bin / "xsim"), f"{bench.name}_snapshot", "-runall"],
+                        workspace,
+                        log,
+                        bench.timeout_seconds or 900,
+                    )
             output = log_path.read_text(encoding="utf-8", errors="replace")
             if _has_failure(output):
                 raise RuntimeError(f"{bench.name} reported a simulation failure; see {log_path}")
@@ -176,7 +179,7 @@ def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: s
             generated = [(workspace / name, run_dir / name) for name in bench.artifacts]
             if any(source.is_symlink() or not source.is_file() for source, _ in generated):
                 raise RuntimeError(f"{bench.name} did not produce every declared artifact")
-            if _fingerprint(bench, vivado_bin, tool_version) != fingerprint:
+            if _fingerprint(bench, vivado_bin, tool_version, sim_mode) != fingerprint:
                 raise RuntimeError(f"{bench.name} inputs changed during simulation")
             for source, destination in generated:
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -194,11 +197,12 @@ def run_bench(bench: RTLBench, vivado_bin: Path, out_root: Path, tool_version: s
     print(f"[VIDEO-PASS] {bench.name}", flush=True)
 
 
-def _run_benches(benches: Iterable[RTLBench], vivado_bin: Path, out_root: Path, jobs: int, resume: bool, tool_version: str) -> None:
+def _run_benches(benches: Iterable[RTLBench], vivado_bin: Path, out_root: Path, jobs: int,
+                 resume: bool, tool_version: str, sim_mode: str) -> None:
     pending = list(benches)
     if jobs <= 1 or len(pending) <= 1:
         for bench in pending:
-            run_bench(bench, vivado_bin, out_root, tool_version, resume=resume)
+            run_bench(bench, vivado_bin, out_root, tool_version, resume=resume, sim_mode=sim_mode)
         return
     active: dict[object, tuple[RTLBench, set[str]]] = {}
     completed: set[str] = set()
@@ -215,7 +219,8 @@ def _run_benches(benches: Iterable[RTLBench], vivado_bin: Path, out_root: Path, 
                     continue
                 if any(not item.parallel for item, _ in active.values()):
                     continue
-                future = pool.submit(run_bench, bench, vivado_bin, out_root, tool_version, resume=resume)
+                future = pool.submit(run_bench, bench, vivado_bin, out_root, tool_version,
+                                     resume=resume, sim_mode=sim_mode)
                 active[future] = (bench, bench_resources)
                 resources.update(bench_resources)
                 pending.remove(bench)
@@ -243,6 +248,8 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=int(os.environ.get("VIDEO_TEST_JOBS", "1")))
     parser.add_argument("--bench", action="append", help="run only the named bench; repeatable")
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--standard-xsim", action="store_true",
+                        help="use separate xelab and xsim processes for interactive debug workflows")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
@@ -262,7 +269,9 @@ def main() -> int:
     out_root = Path(os.environ.get("FPGA_FLOW_OUTPUT_DIR", str(ROOT / "build/fpga-flow"))) / "tests"
     out_root.mkdir(parents=True, exist_ok=True)
     tool_version = _vivado_version(vivado_bin)
-    _run_benches(benches, vivado_bin, out_root, args.jobs, not args.no_resume, tool_version)
+    sim_mode = "standard" if args.standard_xsim else "standalone"
+    _run_benches(benches, vivado_bin, out_root, args.jobs, not args.no_resume,
+                 tool_version, sim_mode)
 
     test_video_out = out_root / "test_video_out"
     subprocess.run(

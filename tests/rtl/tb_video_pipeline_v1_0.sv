@@ -60,7 +60,8 @@ module tb_video_pipeline_v1_0;
     .s_axi_rdata(rdata),.s_axi_rresp(rresp),.s_axi_rvalid(rvalid),.s_axi_rready(rready),
     .hdmi_audio_enable(hdmi_audio_enable),.hdmi_link_mode(hdmi_link_mode),.audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15),.audio_underflow(audio_underflow),.audio_overflow(audio_overflow),
-    .hdmi_diag_status(hdmi_diag_status)
+    .hdmi_diag_status(hdmi_diag_status),
+    .phy_errors(2'b00)
   );
 
   always @(posedge clk) begin

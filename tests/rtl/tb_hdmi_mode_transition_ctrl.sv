@@ -4,6 +4,10 @@ module tb_hdmi_mode_transition_ctrl;
   localparam int LOCK_TIMEOUT_CYCLES = 40;
   localparam int VSYNC_TIMEOUT_CYCLES = 24;
   localparam int CONFIG_TIMEOUT_CYCLES = 12;
+  localparam logic [2:0] ST_BOOT_LOCK=3'd0, ST_BOOT_VSYNC=3'd1,
+                         ST_IDLE=3'd2, ST_WAIT_FRAME=3'd3,
+                         ST_WAIT_LOCK=3'd4, ST_WAIT_CONFIG=3'd5,
+                         ST_WAIT_VSYNC=3'd6, ST_FAILED=3'd7;
 
   logic clk = 1'b0;
   logic aresetn = 1'b0;
@@ -22,10 +26,30 @@ module tb_hdmi_mode_transition_ctrl;
   logic pixel_reset_hold;
   logic force_dvi_safe;
   logic audio_allow;
+  logic [2:0] debug_state, failure_stage;
+  logic debug_vsync_level;
 
   integer checks = 0;
   integer cycle_count;
   logic [1:0] old_mode;
+
+  covergroup transition_coverage_cg @(posedge clk);
+    state_cp: coverpoint debug_state {
+      bins boot_lock={ST_BOOT_LOCK}; bins boot_vsync={ST_BOOT_VSYNC};
+      bins idle={ST_IDLE}; bins wait_frame={ST_WAIT_FRAME};
+      bins wait_lock={ST_WAIT_LOCK}; bins wait_config={ST_WAIT_CONFIG};
+      bins wait_vsync={ST_WAIT_VSYNC}; bins failed={ST_FAILED};
+    }
+    failure_stage_cp: coverpoint failure_stage {
+      bins boot_lock={ST_BOOT_LOCK}; bins idle={ST_IDLE};
+      bins wait_frame={ST_WAIT_FRAME}; bins wait_lock={ST_WAIT_LOCK};
+      bins wait_config={ST_WAIT_CONFIG}; bins wait_vsync={ST_WAIT_VSYNC};
+    }
+    active_mode_cp: coverpoint mode_active {
+      bins vga={2'd0}; bins hd720={2'd1}; bins hd1080={2'd2};
+    }
+  endgroup
+  transition_coverage_cg transition_cov = new();
 
   always #5 clk = ~clk;
 
@@ -50,7 +74,9 @@ module tb_hdmi_mode_transition_ctrl;
     .mode_error(mode_error),
     .pixel_reset_hold(pixel_reset_hold),
     .force_dvi_safe(force_dvi_safe),
-    .audio_allow(audio_allow)
+    .audio_allow(audio_allow),
+    .debug_state(debug_state), .failure_stage(failure_stage),
+    .debug_vsync_level(debug_vsync_level)
   );
 
   task automatic tick(input integer count);
@@ -81,13 +107,16 @@ module tb_hdmi_mode_transition_ctrl;
     end
   endtask
 
-  task automatic clear_error;
+  task automatic clear_error(input logic [2:0] expected_state);
     begin
       @(negedge clk);
       mode_error_clear = 1'b1;
       @(negedge clk);
       mode_error_clear = 1'b0;
       tick(1);
+      if (debug_state !== expected_state)
+        $fatal(1,"clearing sticky error changed state: expected=%0d actual=%0d failure_stage=%0d",
+               expected_state,debug_state,failure_stage);
     end
   endtask
 
@@ -96,10 +125,13 @@ module tb_hdmi_mode_transition_ctrl;
       @(negedge clk);
       pixel_vsync_async = 1'b1;
       repeat (5) @(posedge clk);
+      #1 check(debug_vsync_level === 1'b1,
+               "VSYNC debug level follows the synchronized input");
       @(negedge clk);
       pixel_vsync_async = 1'b0;
       repeat (5) @(posedge clk);
-      #1;
+      #1 check(debug_vsync_level === 1'b0,
+               "VSYNC debug level returns low after synchronization");
     end
   endtask
 
@@ -123,17 +155,18 @@ module tb_hdmi_mode_transition_ctrl;
       @(negedge clk);
       pixel_vsync_async = 1'b1;
       @(posedge clk);
-      #1 check(mode_active === expected_before,
+      #1 check(mode_active === expected_before && debug_vsync_level === 1'b0,
                "async VSYNC does not publish mode at first synchronizer stage");
       @(posedge clk);
-      #1 check(mode_active === expected_before,
+      #1 check(mode_active === expected_before && debug_vsync_level === 1'b1,
                "async VSYNC does not publish mode at second synchronizer stage");
       @(posedge clk);
       #1;
       @(negedge clk);
       pixel_vsync_async = 1'b0;
       repeat (3) @(posedge clk);
-      #1;
+      #1 check(debug_vsync_level === 1'b0,
+               "short VSYNC pulse drains through synchronizer");
     end
   endtask
 
@@ -165,7 +198,8 @@ module tb_hdmi_mode_transition_ctrl;
     end
   endtask
 
-  task automatic wait_failed(input integer max_cycles, input string label_text);
+  task automatic wait_failed(input integer max_cycles, input logic [2:0] expected_stage,
+                             input string label_text);
     integer i;
     begin
       i = 0;
@@ -176,6 +210,8 @@ module tb_hdmi_mode_transition_ctrl;
       end
       check(mode_error === 1'b1, {label_text, ": sticky error set"});
       check(mode_busy === 1'b0, {label_text, ": fail state not busy"});
+      check(debug_state === ST_FAILED, {label_text, ": state reports failed"});
+      check(failure_stage === expected_stage, {label_text, ": failure stage is preserved"});
     end
   endtask
 
@@ -189,22 +225,26 @@ module tb_hdmi_mode_transition_ctrl;
     check(clock_profile_sel === 1'b0 && timing_profile === 2'd0 && mode_active === 2'd0,
           "reset selects VGA/VIC1 without publishing a new mode");
     check(mode_error === 1'b0, "reset clears sticky error");
+    check(debug_state === ST_BOOT_LOCK && failure_stage === ST_BOOT_LOCK &&
+          debug_vsync_level === 1'b0,
+          "reset initializes debug state, failure stage and synchronized VSYNC");
 
     // Delayed VGA lock must remain held until it is stable for several aclk cycles.
     @(negedge clk);
     aresetn = 1'b1;
     tick(4);
-    check(pixel_reset_hold === 1'b1, "boot waits for VGA lock");
+    check(pixel_reset_hold === 1'b1 && debug_state === ST_BOOT_LOCK,
+          "boot waits for VGA lock");
     clock_locked = 2'b01;
     wait_reset_release(12, "boot lock acquisition");
-    check(mode_busy === 1'b1 && force_dvi_safe === 1'b1,
+    check(mode_busy === 1'b1 && force_dvi_safe === 1'b1 && debug_state === ST_BOOT_VSYNC,
           "boot waits for first output frame in safe mode");
     tick(VSYNC_TIMEOUT_CYCLES + 4);
     check(mode_busy === 1'b1 && pixel_reset_hold === 1'b0 &&
           force_dvi_safe === 1'b1 && audio_allow === 1'b0 && mode_error === 1'b0,
           "delayed PS video startup keeps pixel reset released in DVI-safe mode");
     pulse_vsync();
-    check(mode_busy === 1'b0 && mode_active === 2'd0,
+    check(mode_busy === 1'b0 && mode_active === 2'd0 && debug_state === ST_IDLE,
           "boot completes on synchronized VSYNC");
     check(force_dvi_safe === 1'b0 && pixel_reset_hold === 1'b0 && audio_allow === 1'b1,
           "boot enables output after first VSYNC");
@@ -212,18 +252,19 @@ module tb_hdmi_mode_transition_ctrl;
     // Invalid profile 3 is rejected without touching the active VGA profile.
     commit_mode(2'd3);
     tick(2);
-    check(mode_error === 1'b1 && mode_active === 2'd0,
-          "invalid request reports error and retains old mode");
+    check(mode_error === 1'b1 && mode_active === 2'd0 &&
+          debug_state === ST_IDLE && failure_stage === ST_BOOT_LOCK,
+          "invalid request reports error, retains old mode and does not enter failed state");
     check(clock_profile_sel === 1'b0 && timing_profile === 2'd0 &&
           pixel_reset_hold === 1'b0 && force_dvi_safe === 1'b0,
           "invalid request does not disturb outputs");
-    clear_error();
+    clear_error(ST_IDLE);
 
     // VGA -> 720p waits for the current frame boundary, then blanks and holds reset.
     mode_config_ready = 1'b0;
     commit_mode(2'd1);
     tick(2);
-    check(mode_busy === 1'b1 && mode_active === 2'd0,
+    check(mode_busy === 1'b1 && mode_active === 2'd0 && debug_state === ST_WAIT_FRAME,
           "720p request stays pending until frame boundary");
     check(pixel_reset_hold === 1'b0 && force_dvi_safe === 1'b0 && audio_allow === 1'b0,
           "pending request mutes new audio without disrupting current video frame");
@@ -234,7 +275,7 @@ module tb_hdmi_mode_transition_ctrl;
     check(mode_error === 1'b1 && mode_active === 2'd0,
           "busy request is rejected and leaves active mode unchanged");
     pulse_transition_boundary();
-    check(force_dvi_safe === 1'b1 && audio_allow === 1'b0,
+    check(force_dvi_safe === 1'b1 && audio_allow === 1'b0 && debug_state === ST_WAIT_LOCK,
           "frame boundary leaves output safe during clock switch");
     check(clock_profile_sel === 1'b1 && timing_profile === 2'd0 && mode_active === 2'd0,
           "VGA to HD changes only the clock selection before lock");
@@ -243,7 +284,7 @@ module tb_hdmi_mode_transition_ctrl;
           "delayed HD clock lock keeps reset asserted");
     clock_locked = 2'b11;
     tick(8);
-    check(timing_profile === 2'd1 && mode_active === 2'd0 &&
+    check(timing_profile === 2'd1 && mode_active === 2'd0 && debug_state === ST_WAIT_CONFIG &&
           force_dvi_safe === 1'b1 && pixel_reset_hold === 1'b1 && mode_busy === 1'b1,
           "timing updates after lock but reset waits for upstream config ready");
     tick(3);
@@ -251,13 +292,15 @@ module tb_hdmi_mode_transition_ctrl;
           "delayed config-ready keeps transition safely held");
     mode_config_ready = 1'b1;
     wait_reset_release(12, "VGA to HD upstream config ready");
+    check(debug_state === ST_WAIT_VSYNC,
+          "config-ready releases reset into the new-profile VSYNC wait");
     short_async_vsync_pulse(2'd0);
     wait_mode_active(2'd1, 6, "VGA to 720p");
-    check(clock_profile_sel === 1'b1 && timing_profile === 2'd1 &&
+    check(clock_profile_sel === 1'b1 && timing_profile === 2'd1 && debug_state === ST_IDLE &&
           force_dvi_safe === 1'b0 && pixel_reset_hold === 1'b0 && audio_allow === 1'b1,
           "720p commits only after new synchronized VSYNC");
     check(mode_error === 1'b1, "busy rejection remains sticky after successful pending transition");
-    clear_error();
+    clear_error(ST_IDLE);
 
     // Lock can be good while upstream profile programming stalls; do not release reset.
     mode_config_ready = 1'b0;
@@ -268,11 +311,11 @@ module tb_hdmi_mode_transition_ctrl;
           pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1,
           "upstream profile config is pending under reset");
     tick(CONFIG_TIMEOUT_CYCLES + 3);
-    wait_failed(2, "upstream config-ready timeout");
+    wait_failed(2, ST_WAIT_CONFIG, "upstream config-ready timeout");
     check(pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1 &&
           mode_active === 2'd1 && mode_error === 1'b1,
           "config-ready timeout fails closed without committing mode");
-    clear_error();
+    clear_error(ST_FAILED);
     mode_config_ready = 1'b1;
     commit_mode(2'd1);
     wait_reset_release(12, "retry after config-ready timeout");
@@ -314,11 +357,11 @@ module tb_hdmi_mode_transition_ctrl;
     check(clock_profile_sel === 1'b1 && pixel_reset_hold === 1'b1,
           "lock-timeout test entered HD profile under reset");
     tick(LOCK_TIMEOUT_CYCLES + 4);
-    wait_failed(2, "HD clock lock timeout");
+    wait_failed(2, ST_WAIT_LOCK, "HD clock lock timeout");
     check(pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1 && audio_allow === 1'b0 &&
           mode_active === 2'd0,
           "clock lock timeout fails closed without publishing target mode");
-    clear_error();
+    clear_error(ST_FAILED);
     check(pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1,
           "clearing error does not release failed safe state");
     clock_locked = 2'b11;
@@ -335,10 +378,10 @@ module tb_hdmi_mode_transition_ctrl;
     check(timing_profile === 2'd2 && mode_active === 2'd1,
           "new timing remains unpublished while awaiting VSYNC");
     tick(VSYNC_TIMEOUT_CYCLES + 4);
-    wait_failed(2, "new-profile VSYNC timeout");
+    wait_failed(2, ST_WAIT_VSYNC, "new-profile VSYNC timeout");
     check(pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1 && mode_active === 2'd1,
           "VSYNC timeout preserves previous active mode and holds output safe");
-    clear_error();
+    clear_error(ST_FAILED);
     commit_mode(2'd1);
     wait_reset_release(12, "retry after VSYNC timeout");
     pulse_vsync();
@@ -349,11 +392,11 @@ module tb_hdmi_mode_transition_ctrl;
     // Lock loss while active faults closed; retry succeeds after lock returns.
     clock_locked = 2'b01;
     tick(5);
-    wait_failed(3, "active HD clock loss");
+    wait_failed(3, ST_IDLE, "active HD clock loss");
     check(pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1 && audio_allow === 1'b0 &&
           mode_active === 2'd1,
           "active clock loss mutes and holds reset");
-    clear_error();
+    clear_error(ST_FAILED);
     clock_locked = 2'b11;
     commit_mode(2'd1);
     wait_reset_release(12, "retry after active lock loss");
@@ -364,16 +407,19 @@ module tb_hdmi_mode_transition_ctrl;
     // A request with no frame boundary times out and leaves a safe, recoverable state.
     commit_mode(2'd0);
     tick(VSYNC_TIMEOUT_CYCLES + 4);
-    wait_failed(2, "current-frame VSYNC timeout");
+    wait_failed(2, ST_WAIT_FRAME, "current-frame VSYNC timeout");
     check(pixel_reset_hold === 1'b1 && force_dvi_safe === 1'b1 && mode_active === 2'd1,
           "frame-boundary timeout keeps prior mode and fails closed");
-    clear_error();
+    clear_error(ST_FAILED);
     commit_mode(2'd1);
     wait_reset_release(12, "retry after frame-boundary timeout");
     pulse_vsync();
     check(mode_active === 2'd1 && force_dvi_safe === 1'b0,
           "controller recovers after frame-boundary timeout");
 
+    if (transition_cov.get_inst_coverage() < 100.0)
+      $fatal(1,"functional coverage incomplete: %0.2f%%",transition_cov.get_inst_coverage());
+    $display("FUNCTIONAL_COVERAGE_PASS: mode state/failure-stage/active-mode bins=100%%");
     $display("TEST_PASS: hdmi_mode_transition_ctrl checks=%0d", checks);
     $display("Coverage: reset/boot lock, invalid request, each profile, shared HD clock, frame boundary,");
     $display("          VSYNC synchronization, timing publish, busy rejection, lock delay/loss/timeout,");

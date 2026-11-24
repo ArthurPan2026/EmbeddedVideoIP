@@ -250,20 +250,72 @@ class CompositeResetPolarityTests(unittest.TestCase):
     def test_vsync_observation_does_not_disconnect_timing_interface(self):
         root = Path(__file__).resolve().parents[2]
         script = (root / "tools/package_composite_ip.tcl").read_text(encoding="utf-8")
-        wrapper = (root / "ip/video_pipeline_1_0/hdl/embedded_video_ip_timing_gen_wrapper.v").read_text(encoding="utf-8")
-        self.assertIn("connect_bd_net [get_bd_pins $timing_gen/vsync_raw] $video_vsync_raw_port", script)
-        self.assertNotIn("connect_bd_net [get_bd_pins $timing_gen/VSYNC] $video_vsync_raw_port", script)
-        self.assertIn("assign vsync_raw = VSYNC;", wrapper)
+        wrapper = (root / "ip/video_pipeline_1_0/hdl/embedded_video_ip_video_out_wrapper.v").read_text(encoding="utf-8")
+        self.assertIn("make_bd_intf_pins_external [get_bd_intf_pins $video_out/vtiming_in]", script)
+        self.assertIn("assign video_vsync_raw=vsync;", wrapper)
+        self.assertIn(".vid_vsync(video_vsync)", wrapper)
+        self.assertIn(".vtg_vsync(vsync)", wrapper)
 
-    def test_hdmi_pixel_reset_constant_is_inactive_for_aux_polarity(self):
+    def test_composite_package_registers_generated_video_out_child_wrapper(self):
         root = Path(__file__).resolve().parents[2]
-        script = (root / "tools" / "package_composite_ip.tcl").read_text(encoding="utf-8")
-        self.assertIn("CONFIG.C_AUX_RESET_HIGH {1}", script)
-        self.assertIn("CONFIG.C_EXT_RESET_HIGH {1}", script)
-        self.assertIn("connect_bd_net [get_bd_pins $zero/dout] [get_bd_pins $rst/aux_reset_in]", script)
-        self.assertIn("CONFIG.C_OPERATION {or}", script)
-        self.assertIn("$pixel_reset_hold_port [get_bd_pins $reset_or/Op2]", script)
-        self.assertIn("[get_bd_pins $reset_or/Res] $pixel_reset_ext_port [get_bd_pins $rst/ext_reset_in]", script)
+        script = (root / "tools/package_composite_ip.tcl").read_text(encoding="utf-8")
+        self.assertIn("embedded_video_ip_video_out_video_out_0 synth", script)
+        self.assertIn("ipx::add_file $relative_file $synth_group", script)
+        self.assertIn("ipx::add_file $relative_file $sim_group", script)
+        self.assertIn("Generated video-out source was not registered", script)
+
+    def test_composite_package_registers_generated_video_out_subcore_hdl(self):
+        root = Path(__file__).resolve().parents[2]
+        script = (root / "tools/package_composite_ip.tcl").read_text(encoding="utf-8")
+        self.assertIn("v_axi4s_vid_out_v4_0_vl_rfs.v", script)
+        self.assertIn("package_vout_impl_relative src/v_axi4s_vid_out_v4_0_vl_rfs.v", script)
+        self.assertIn("ipx::add_file $relative_file $synth_group", script)
+        self.assertIn("ipx::add_file $relative_file $sim_group", script)
+        self.assertIn("Generated video-out source was not registered", script)
+
+    def test_clock_xdc_uses_supported_static_commands_and_models_all_modes(self):
+        root = Path(__file__).resolve().parents[2]
+        xdc = (root / "ip/video_pipeline_1_0/constraints/embedded_video_ip_clocks.xdc").read_text(encoding="utf-8")
+        self.assertNotIn("foreach ", xdc)
+        generated = [line for line in xdc.splitlines() if line.startswith("create_generated_clock -name evip_")]
+        self.assertEqual(len(generated), 16)
+        self.assertEqual(sum(" -add " in line for line in generated), 16)
+        self.assertIn("-group [get_clocks evip_480_*]", xdc)
+        self.assertIn("-group [get_clocks evip_1080p60_*]", xdc)
+        self.assertIn("serializer_mmcm/CLKIN1", xdc)
+        self.assertIn("-multiply_by 5 -divide_by 1", xdc)
+        self.assertIn("-multiply_by 5 -divide_by 25", xdc)
+        self.assertIn("-group [get_clocks {mmcm_feedback raw_serial raw_pixel logic_pixel_raw monitor_raw serdes_pixel_clk}]", xdc)
+        self.assertIn("-group [get_clocks {mmcm_feedback_1 raw_serial_1 raw_pixel_1 logic_pixel_raw_1 monitor_raw_1 serdes_pixel_clk_1}]", xdc)
+        self.assertEqual(xdc.count("-from [get_clocks -quiet evip_*]"), 2)
+
+    def test_serializer_uses_mmcm_and_fixed_feedback_divider_profiles(self):
+        root = Path(__file__).resolve().parents[2]
+        clocks = (root / "ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv").read_text(encoding="utf-8")
+        self.assertIn("MMCME2_ADV #(.CLKIN1_PERIOD(7.943), .CLKIN2_PERIOD(6.7340067)", clocks)
+        self.assertIn(") serializer_mmcm (", clocks)
+        self.assertIn("encode_divider_reg2", clocks)
+        self.assertNotIn("PLLE2_ADV", clocks)
+
+    def test_vga_clock_generator_is_canonical_rtl(self):
+        root = Path(__file__).resolve().parents[2]
+        clocks = (root / "ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv").read_text(encoding="utf-8")
+        package = (root / "tools/package_composite_ip.tcl").read_text(encoding="utf-8")
+        self.assertIn("module embedded_video_ip_video_out_clk_wiz_vga_0_clk_wiz", clocks)
+        self.assertIn(".CLKFBOUT_MULT_F(17.625)", clocks)
+        self.assertIn(".CLKOUT0_DIVIDE_F(35.0)", clocks)
+        self.assertIn(".CLKOUT1_DIVIDE(7)", clocks)
+        self.assertNotIn("create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz", package)
+
+    def test_pixel_reset_polarity_is_explicit_at_rtl_boundaries(self):
+        root = Path(__file__).resolve().parents[2]
+        script = (root / "tools/package_composite_ip.tcl").read_text(encoding="utf-8")
+        wrapper = (root / "ip/video_pipeline_1_0/hdl/embedded_video_ip_video_out_wrapper.v").read_text(encoding="utf-8")
+        self.assertIn("connect_bd_net $resetn [get_bd_pins $video_out/aresetn]", script)
+        self.assertIn("assign pixel_reset_ext_asserted=!aresetn || pixel_reset_hold || !hdmi_mmcm_locked;", wrapper)
+        self.assertIn(".async_aresetn(!pixel_reset_ext_asserted),.sync_aresetn(pixel_aresetn)", wrapper)
+        self.assertIn(".vid_io_out_reset(!pixel_aresetn)", wrapper)
+        self.assertNotIn("create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset", script)
 
 
 class VideoFlowInputPartitionTests(unittest.TestCase):
@@ -416,6 +468,7 @@ class VideoFlowInputPartitionTests(unittest.TestCase):
             manifest = (video_flow.ROOT / "fpga-project.toml").read_text(encoding="utf-8")
             for bench in (
                 "tb_hdmi_clock_profile_mux",
+                "tb_hdmi_four_mode_clocks",
                 "tb_hdmi_mode_transition_ctrl",
                 "tb_hdmi_video_timing_gen",
                 "tb_axis_video_nn_scaler_output_dims",

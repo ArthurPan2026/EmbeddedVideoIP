@@ -93,6 +93,12 @@ module tb_hdmi_color_avi_infoframe;
     check_profile(h_rgb,s_rgb[0],s_rgb[1],s_rgb[2],s_rgb[3],8'h10,8'h28,8'h08,8'h22,8'h00,"RGB8 VIC34");
     check_profile(h_601_f,s_601_f[0],s_601_f[1],s_601_f[2],s_601_f[3],8'h50,8'h68,8'h00,8'h22,8'h40,"YCbCr601 full VIC34");
     check_profile(h_709_f,s_709_f[0],s_709_f[1],s_709_f[2],s_709_f[3],8'h50,8'hA8,8'h00,8'h22,8'h40,"YCbCr709 full VIC34");
+    video_vic=8'd16; #1;
+    check_profile(h_rgb,s_rgb[0],s_rgb[1],s_rgb[2],s_rgb[3],8'h10,8'h28,8'h08,8'h10,8'h00,"RGB8 VIC16 1080p60");
+    check_profile(h_601_l,s_601_l[0],s_601_l[1],s_601_l[2],s_601_l[3],8'h50,8'h68,8'h00,8'h10,8'h00,"YCbCr601 limited VIC16 1080p60");
+    check_profile(h_601_f,s_601_f[0],s_601_f[1],s_601_f[2],s_601_f[3],8'h50,8'h68,8'h00,8'h10,8'h40,"YCbCr601 full VIC16 1080p60");
+    check_profile(h_709_l,s_709_l[0],s_709_l[1],s_709_l[2],s_709_l[3],8'h50,8'hA8,8'h00,8'h10,8'h00,"YCbCr709 limited VIC16 1080p60");
+    check_profile(h_709_f,s_709_f[0],s_709_f[1],s_709_f[2],s_709_f[3],8'h50,8'hA8,8'h00,8'h10,8'h40,"YCbCr709 full VIC16 1080p60");
     $display("TEST_PASS: hdmi_color_avi_infoframe color profiles, runtime VIC/aspect, byte order, checksum");
     $finish;
   end

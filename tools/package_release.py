@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import xml.etree.ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
@@ -60,6 +61,15 @@ def main() -> int:
         raise SystemExit("Run the Vivado package stage before creating release archives.")
     package_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     try:
+        component_root = ET.parse(component).getroot()
+    except (ET.ParseError, OSError) as exc:
+        raise SystemExit(f"Invalid packaged component.xml: {exc}") from exc
+    revision_text = next((element.text for element in component_root.iter()
+                          if element.tag.endswith("}coreRevision")), None)
+    if revision_text is None or not revision_text.isdigit():
+        raise SystemExit("Packaged component.xml has no numeric xilinx:coreRevision")
+    core_revision = int(revision_text)
+    try:
         source_commit = subprocess.check_output(
             ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
         ).strip()
@@ -84,6 +94,7 @@ def main() -> int:
         "product": "EmbeddedVideoIP Vivado IP",
         "version": version,
         "vlnv": "panfpga.org:video:embedded_video_ip:1.0",
+        "core_revision": core_revision,
         "vivado_version": args.vivado_version,
         "source_commit": source_commit,
         "canonical_source_sha256": package_metadata["canonical_source"]["sha256"],
@@ -104,12 +115,12 @@ def main() -> int:
         ps_files.append((root / source_rel, ps_prefix + package_rel))
     ps_readme = output / "release-ps-readme.md"
     ps_readme.write_text(
-        "# EmbeddedVideoIP Zynq-7000 PS Library\n\n"
-        f"Version: {version}\n\n"
-        "Copy Video/Lib into the Vitis application source tree. "
-        "Add Video/Lib/Inc and Video/Lib/XilinxZynq7000 to include paths, "
-        "then compile Video/Lib/Src/video_out.c and "
-        "Video/Lib/XilinxZynq7000/video_out_xilinx.c.\n",
+        "# EmbeddedVideoIP Zynq-7000 PS 库\n\n"
+        f"版本为 {version}。\n\n"
+        "将 Video/Lib 加入 Vitis 应用源码树。"
+        "头文件路径加入 Video/Lib/Inc 和 Video/Lib/XilinxZynq7000，"
+        "编译 Video/Lib/Src/video_out.c 与 "
+        "Video/Lib/XilinxZynq7000/video_out_xilinx.c。\n",
         encoding="utf-8",
         newline="\n",
     )

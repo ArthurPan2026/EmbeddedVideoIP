@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -24,7 +25,10 @@ class ReleasePackageTests(unittest.TestCase):
             composite.mkdir(parents=True)
             (composite / "src").mkdir()
             interface.mkdir(parents=True)
-            (composite / "component.xml").write_text("<component/>\n", encoding="utf-8")
+            (composite / "component.xml").write_text(
+                '<spirit:component xmlns:spirit="urn:spirit" xmlns:xilinx="urn:xilinx">'
+                '<xilinx:coreRevision>5</xilinx:coreRevision></spirit:component>\n', encoding="utf-8"
+            )
             (composite / "src/core.sv").write_text("module core; endmodule\n", encoding="utf-8")
             (composite / "PACKAGE_METADATA.json").write_text(
                 '{"canonical_source":{"sha256":"canonical-hash"}}\n', encoding="utf-8"
@@ -63,6 +67,8 @@ class ReleasePackageTests(unittest.TestCase):
                 self.assertIn("embedded-video-ip/ip_repo/panfpga/embedded_video_ip/component.xml", names)
                 self.assertIn("embedded-video-ip/ip_repo/if/tmds_v1_0/tmds.xml", names)
                 self.assertIn("embedded-video-ip/LICENSES/CERN-OHL-W-2.0.txt", names)
+                release_meta = json.loads(archive.read("embedded-video-ip/RELEASE-METADATA.json"))
+                self.assertEqual(release_meta["core_revision"], 5)
                 self.assertNotIn("embedded-video-ip/tests/testbench.sv", names)
             with zipfile.ZipFile(ps_archive) as archive:
                 names = set(archive.namelist())

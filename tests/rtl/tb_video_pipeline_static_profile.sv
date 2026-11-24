@@ -102,7 +102,8 @@ module tb_video_pipeline_static_profile;
     .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready),
     .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode), .audio_mute(audio_mute),
     .audio_gain_q15(audio_gain_q15), .audio_underflow(audio_underflow),
-    .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000)
+    .audio_overflow(audio_overflow), .hdmi_diag_status(6'b000000),
+    .phy_errors(2'b00)
   );
 
   always @(posedge aclk) begin
@@ -173,6 +174,8 @@ module tb_video_pipeline_static_profile;
     axi_read(6'h10, status_word);
     if (status_word[7:6] !== 2'd2)
       $fatal(1, "fixed source status did not report VDMA: %08x", status_word);
+    if (status_word[27:20] !== 8'd0)
+      $fatal(1, "static output profile must keep mode-transition debug bits zero: %08x", status_word);
     if (bram_en !== 1'b0 || bram_addr !== 18'd0 || bram_busy !== 1'b0 || bram_frame_done !== 1'b0)
       $fatal(1, "disabled BRAM source outputs were not tied inactive");
     if (s_axis_hls_tready !== 1'b0)
@@ -188,6 +191,26 @@ module tb_video_pipeline_static_profile;
     axi_write(6'h2c, 32'd1); // y步长为1、余数为0
     axi_write(6'h00, CTRL_VDMA_XRGB_COMMIT);
     repeat (3) @(posedge aclk);
+
+    // A restarted VDMA may first present the tail of its current frame.
+    // Drain those beats until the next SOF without exposing them to video-out
+    // or raising the sticky pre-SOF diagnostic.
+    repeat (2) begin
+      @(negedge aclk);
+      s_axis_vdma_tdata = TEST_XRGB_WORD;
+      s_axis_vdma_tvalid = 1'b1;
+      s_axis_vdma_tuser = 1'b0;
+      s_axis_vdma_tlast = 1'b0;
+      do @(posedge aclk); while (!s_axis_vdma_tready);
+      @(negedge aclk);
+      s_axis_vdma_tvalid = 1'b0;
+      #1;
+      if (m_axis_video_tvalid !== 1'b0)
+        $fatal(1, "pre-SOF resynchronization data leaked to video-out");
+    end
+    axi_read(6'h18, readback);
+    if (readback[3] !== 1'b0)
+      $fatal(1, "pre-SOF resynchronization raised ERROR_FLAGS[3]: %08x", readback);
 
     // Hold the first output beat under 下游背压 and check it remains stable.
     @(negedge aclk);
@@ -275,6 +298,20 @@ module tb_video_pipeline_static_profile;
     axi_read(6'h18, readback);
     if (readback !== 32'd0)
       $fatal(1, "有效帧后出现意外错误标志：%08x", readback);
+
+    // Once synchronized, unexpected idle data without SOF remains an error.
+    @(negedge aclk);
+    s_axis_vdma_tdata = TEST_XRGB_WORD;
+    s_axis_vdma_tvalid = 1'b1;
+    s_axis_vdma_tuser = 1'b0;
+    s_axis_vdma_tlast = 1'b0;
+    do @(posedge aclk); while (!s_axis_vdma_tready);
+    @(negedge aclk);
+    s_axis_vdma_tvalid = 1'b0;
+    repeat (2) @(posedge aclk);
+    axi_read(6'h18, readback);
+    if (readback[3] !== 1'b1)
+      $fatal(1, "post-frame unsynchronized data did not set ERROR_FLAGS[3]: %08x", readback);
 
     // 请求已裁剪的BRAM源必须安全失败并设置bit4。
     axi_write(6'h00, 32'h0000_0141); // 使能、固定XRGB并提交，源选择为BRAM

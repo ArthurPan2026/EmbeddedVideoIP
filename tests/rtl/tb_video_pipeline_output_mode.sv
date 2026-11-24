@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_video_pipeline_output_mode;
+module tb_video_pipeline_output_mode #(parameter bit TEST_ENABLE_1080P60 = 1'b0);
   logic clk = 1'b0;
   logic resetn = 1'b0;
   always #5 clk = ~clk;
@@ -18,6 +18,9 @@ module tb_video_pipeline_output_mode;
   logic mode_error = 0;
   wire [1:0] mode_request;
   wire mode_commit, mode_error_clear, mode_config_ready;
+  logic [2:0] mode_debug_state = 3'd0;
+  logic [2:0] mode_failure_stage = 3'd0;
+  logic mode_debug_vsync_level = 1'b0;
   wire [23:0] video_tdata;
   wire video_tvalid, video_tuser, video_tlast;
   wire hls_ready, vdma_ready;
@@ -36,7 +39,7 @@ module tb_video_pipeline_output_mode;
     .SOURCE_SELECT_MODE(1), .FIXED_SOURCE(2),
     .FORMAT_SELECT_MODE(1), .FIXED_FORMAT(2),
     .MAX_SCALER_INPUT_WIDTH(1280), .MAX_SCALER_INPUT_HEIGHT(720),
-    .ENABLE_SCALER(1), .ENABLE_OUTPUT_MODE(1)
+    .ENABLE_SCALER(1), .ENABLE_1080P60(TEST_ENABLE_1080P60), .ENABLE_OUTPUT_MODE(1)
   ) dut (
     .aclk(clk), .aresetn(resetn),
     .bram_en(bram_en), .bram_addr(bram_addr), .bram_dout(32'd0),
@@ -54,11 +57,14 @@ module tb_video_pipeline_output_mode;
     .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(rready),
     .hdmi_audio_enable(hdmi_audio_enable), .hdmi_link_mode(hdmi_link_mode),
     .audio_mute(audio_mute), .audio_gain_q15(audio_gain_q15),
-    .audio_underflow(1'b0), .audio_overflow(1'b0), .hdmi_diag_status(6'd0),
+    .audio_underflow(1'b0), .audio_overflow(1'b0), .hdmi_diag_status(6'd0), .phy_errors(2'b00),
     .video_mode_request(mode_request), .video_mode_commit(mode_commit),
     .video_mode_error_clear(mode_error_clear), .video_mode_active(mode_active),
     .video_mode_busy(mode_busy), .video_mode_pixel_reset_hold(mode_pixel_reset_hold),
-    .video_mode_error(mode_error), .video_mode_config_ready(mode_config_ready)
+    .video_mode_error(mode_error), .video_mode_config_ready(mode_config_ready),
+    .video_mode_debug_state(mode_debug_state),
+    .video_mode_failure_stage(mode_failure_stage),
+    .video_mode_vsync_level(mode_debug_vsync_level)
   );
 
   task automatic axi_write(input logic [5:0] address, input logic [31:0] value);
@@ -110,16 +116,22 @@ module tb_video_pipeline_output_mode;
     mode_busy = 1'b1;
     mode_pixel_reset_hold = 1'b1; // Old VSYNC completed; hold pixel domain for reconfiguration.
     wait (!dut.cfg_pending);
+    @(posedge clk); #1; // config_ready is a registered acknowledgement of the committed geometry.
     if (dut.active_output_width !== 11'd1280 || dut.active_output_height !== 11'd720 ||
         dut.active_active_width !== 11'd960 || dut.active_active_height !== 11'd720 ||
         dut.active_x_offset !== 11'd160 || mode_config_ready !== 1'b1)
-      $fatal(1, "TEST_FAIL: 720p geometry was not atomically committed");
+      $fatal(1, "TEST_FAIL: 720p geometry was not atomically committed: output=%0dx%0d active=%0dx%0d offset=%0d ready=%b pending=%b mode_pending=%b invalid=%b", dut.active_output_width, dut.active_output_height, dut.active_active_width, dut.active_active_height, dut.active_x_offset, mode_config_ready, dut.cfg_pending, dut.mode_cfg_pending, dut.invalid_profile_request);
 
     mode_active = 2'd1;
     mode_pixel_reset_hold = 1'b0;
     mode_busy = 1'b0;
+    mode_debug_state = 3'd2; // ST_IDLE
+    mode_failure_stage = 3'd0; // ST_BOOT_LOCK: no transition failure yet
+    mode_debug_vsync_level = 1'b1;
     axi_read(6'h10, readback);
-    if (readback[29:28] !== 2'd1 || readback[30] !== 1'b0 || readback[31] !== 1'b0)
+    if (readback[29:28] !== 2'd1 || readback[30] !== 1'b0 || readback[31] !== 1'b0 ||
+        readback[27:25] !== 3'd2 || readback[24:22] !== 3'd0 ||
+        readback[21] !== 1'b1 || readback[20] !== 1'b1 || readback[19:14] !== 6'h13) // reserved 01 + native-mode mask 0011 (480p/720p)
       $fatal(1, "TEST_FAIL: output-mode status bits mismatch %h", readback);
 
     // Native 1280x720 input to VIC34 1080p30; 11-bit DDA remainder must retain 1280.
@@ -137,6 +149,7 @@ module tb_video_pipeline_output_mode;
       $fatal(1, "TEST_FAIL: VIC34 request did not wait on the current frame");
     mode_pixel_reset_hold = 1'b1;
     wait (!dut.cfg_pending);
+    @(posedge clk); #1; // config_ready is a registered acknowledgement of the committed geometry.
     if (dut.active_output_width !== 11'd1920 || dut.active_output_height !== 11'd1080 ||
         dut.active_active_width !== 11'd1440 || dut.active_active_height !== 11'd1080 ||
         dut.active_x_offset !== 11'd240 || mode_config_ready !== 1'b1)
@@ -151,14 +164,57 @@ module tb_video_pipeline_output_mode;
     if (dut.gen_scaler.u_scaler.cfg_invalid_geometry !== 1'b0)
       $fatal(1, "TEST_FAIL: native 1280x720 input was rejected by scaler geometry");
 
-    // Unsupported request 3 must fail closed and never claim configuration-ready.
-    axi_write(6'h00, 32'h0001_e14d);
-    wait (!dut.cfg_pending);
-    axi_read(6'h18, readback);
-    if (!readback[4] || mode_config_ready !== 1'b0 || dut.active_enable !== 1'b0)
-      $fatal(1, "TEST_FAIL: reserved output mode was accepted or not reported");
+    // Mode 3 is rejected when the 1080p60 profile is disabled. With the
+    // profile enabled, the same VIC16 request commits only while pixel reset is held.
+    if (!TEST_ENABLE_1080P60) begin
+      axi_write(6'h00, 32'h0001_e14d);
+      wait (!dut.cfg_pending);
+      mode_error = 1'b1;
+      mode_pixel_reset_hold = 1'b1;
+      mode_debug_state = 3'd7; // ST_FAILED
+      mode_failure_stage = 3'd5; // ST_WAIT_CONFIG
+      mode_debug_vsync_level = 1'b0;
+      axi_read(6'h10, readback);
+      if (readback[31] !== 1'b1 || readback[30] !== 1'b0 ||
+          readback[27:25] !== 3'd7 || readback[24:22] !== 3'd5 ||
+          readback[21] !== 1'b0 || readback[20] !== 1'b0 || readback[19:14] !== 6'h13)
+        $fatal(1, "TEST_FAIL: transition debug/status field packing mismatch %h", readback);
+      axi_read(6'h18, readback);
+      if (!readback[4] || mode_config_ready !== 1'b0 || dut.active_enable !== 1'b0)
+        $fatal(1, "TEST_FAIL: disabled 1080p60 request was accepted or not reported");
+    end else begin
+      mode_busy = 1'b1;
+      axi_write(6'h00, 32'h0001_e14d); // VIC16 1080p60 request
+      wait (dut.cfg_pending);
+      @(posedge clk); #1;
+      if (mode_request !== 2'd3 || mode_config_ready !== 1'b0 ||
+          dut.invalid_profile_request !== 1'b0 ||
+          dut.active_output_width !== 11'd1920 || dut.active_output_height !== 11'd1080)
+        $fatal(1, "TEST_FAIL: enabled VIC16 request was not staged atomically");
+      mode_pixel_reset_hold = 1'b1;
+      wait (!dut.cfg_pending);
+      @(posedge clk); #1;
+      if (dut.active_output_width !== 11'd1920 || dut.active_output_height !== 11'd1080 ||
+          dut.active_active_width !== 11'd1440 || dut.active_active_height !== 11'd1080 ||
+          dut.active_x_offset !== 11'd240 || mode_config_ready !== 1'b1 ||
+          dut.invalid_profile_error !== 1'b0)
+        $fatal(1, "TEST_FAIL: enabled VIC16 geometry did not commit: %0dx%0d active=%0dx%0d ready=%b invalid=%b",
+               dut.active_output_width, dut.active_output_height, dut.active_active_width,
+               dut.active_active_height, mode_config_ready, dut.invalid_profile_error);
+      mode_active = 2'd3;
+      mode_pixel_reset_hold = 1'b0;
+      mode_busy = 1'b0;
+      axi_read(6'h10, readback);
+      if (readback[29:28] !== 2'd3 || readback[31] !== 1'b0 || readback[30] !== 1'b0)
+        $fatal(1, "TEST_FAIL: enabled VIC16 status mismatch %h", readback);
+    end
 
-    $display("TEST_PASS: tb_video_pipeline_output_mode VGA-source=720p native1280=1080p invalid=mode3");
+    $display("TEST_PASS: tb_video_pipeline_output_mode enable1080p60=%0d", TEST_ENABLE_1080P60);
     $finish;
   end
+endmodule
+
+
+module tb_video_pipeline_output_mode_1080p60;
+  tb_video_pipeline_output_mode #(.TEST_ENABLE_1080P60(1'b1)) test();
 endmodule

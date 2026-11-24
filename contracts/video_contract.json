@@ -5,13 +5,32 @@
   "max_input_height": 720,
   "max_output_width": 1920,
   "max_output_height": 1080,
-  "input_formats": ["RGB565", "RGB888", "XRGB8888", "BGRX8888"],
+  "input_formats": [
+    "RGB565",
+    "RGB888",
+    "XRGB8888",
+    "BGRX8888"
+  ],
   "video_stream_component_order": "RBG",
   "stride_unit": "bytes",
-  "supported_vic": [1, 4, 34],
-  "scaler_modes": ["bypass", "nearest_neighbor"],
-  "aspect_modes": ["fit", "stretch"],
-  "line_buffer_mode": {"lutram": 0, "bram": 1},
+  "supported_vic": [
+    1,
+    4,
+    16,
+    34
+  ],
+  "scaler_modes": [
+    "bypass",
+    "nearest_neighbor"
+  ],
+  "aspect_modes": [
+    "fit",
+    "stretch"
+  ],
+  "line_buffer_mode": {
+    "lutram": 0,
+    "bram": 1
+  },
   "hdmi": {
     "standard_subset": "HDMI 1.4b",
     "tmds_data_lanes": 3,

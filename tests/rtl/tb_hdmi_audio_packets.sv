@@ -13,6 +13,7 @@ module tb_hdmi_audio_packets;
   logic [23:0] acr_round_low_header, acr_round_high_header, acr_max_header;
   logic [55:0] acr_round_low_sub [0:3], acr_round_high_sub [0:3], acr_max_sub [0:3];
   logic [31:0] profile_pixel_clock=32'd25_178_571;
+  logic [7:0] profile_vic=8'd1;
   logic [23:0] acr_profile48_header, acr_profile96_header, acr_profile192_header;
   logic [55:0] acr_profile48_sub [0:3], acr_profile96_sub [0:3], acr_profile192_sub [0:3];
   logic [31:0] acr48_pixel_clock=32'd25_178_571, acr96_pixel_clock=32'd25_178_571;
@@ -38,23 +39,23 @@ module tb_hdmi_audio_packets;
      .first_frame_index(first_index), .header(sample192_header), .subpacket(sample192_sub));
 
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(48_000)) acr48
-    (.pixel_clock_hz(acr48_pixel_clock), .header(acr48_header), .subpacket(acr48_sub));
+    (.pixel_clock_hz(acr48_pixel_clock), .video_vic(8'd0), .header(acr48_header), .subpacket(acr48_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(96_000)) acr96
-    (.pixel_clock_hz(acr96_pixel_clock), .header(acr96_header), .subpacket(acr96_sub));
+    (.pixel_clock_hz(acr96_pixel_clock), .video_vic(8'd0), .header(acr96_header), .subpacket(acr96_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(192_000)) acr192
-    (.pixel_clock_hz(acr192_pixel_clock), .header(acr192_header), .subpacket(acr192_sub));
+    (.pixel_clock_hz(acr192_pixel_clock), .video_vic(8'd0), .header(acr192_header), .subpacket(acr192_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(48_000)) acr_round_low
-    (.pixel_clock_hz(acr_round_low_pixel_clock), .header(acr_round_low_header), .subpacket(acr_round_low_sub));
+    (.pixel_clock_hz(acr_round_low_pixel_clock), .video_vic(8'd0), .header(acr_round_low_header), .subpacket(acr_round_low_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(48_000)) acr_round_high
-    (.pixel_clock_hz(acr_round_high_pixel_clock), .header(acr_round_high_header), .subpacket(acr_round_high_sub));
+    (.pixel_clock_hz(acr_round_high_pixel_clock), .video_vic(8'd0), .header(acr_round_high_header), .subpacket(acr_round_high_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(48_000)) acr_max
-    (.pixel_clock_hz(acr_max_pixel_clock), .header(acr_max_header), .subpacket(acr_max_sub));
+    (.pixel_clock_hz(acr_max_pixel_clock), .video_vic(8'd0), .header(acr_max_header), .subpacket(acr_max_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(48_000), .USE_VIDEO_PROFILE_CLOCKS(1'b1)) acr_profile48
-    (.pixel_clock_hz(profile_pixel_clock), .header(acr_profile48_header), .subpacket(acr_profile48_sub));
+    (.pixel_clock_hz(profile_pixel_clock), .video_vic(profile_vic), .header(acr_profile48_header), .subpacket(acr_profile48_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(96_000), .USE_VIDEO_PROFILE_CLOCKS(1'b1)) acr_profile96
-    (.pixel_clock_hz(profile_pixel_clock), .header(acr_profile96_header), .subpacket(acr_profile96_sub));
+    (.pixel_clock_hz(profile_pixel_clock), .video_vic(profile_vic), .header(acr_profile96_header), .subpacket(acr_profile96_sub));
   hdmi_acr_packet #(.AUDIO_SAMPLE_RATE_HZ(192_000), .USE_VIDEO_PROFILE_CLOCKS(1'b1)) acr_profile192
-    (.pixel_clock_hz(profile_pixel_clock), .header(acr_profile192_header), .subpacket(acr_profile192_sub));
+    (.pixel_clock_hz(profile_pixel_clock), .video_vic(profile_vic), .header(acr_profile192_header), .subpacket(acr_profile192_sub));
 
   task automatic check(input logic condition, input string message);
     if (!condition) $fatal(1, "%s", message);
@@ -182,12 +183,16 @@ module tb_hdmi_audio_packets;
     check_acr(acr_profile48_sub[0], 20'd6144, 20'd25179, "static VGA 48 kHz ACR");
     check_acr(acr_profile96_sub[0], 20'd12288, 20'd25179, "static VGA 96 kHz ACR");
     check_acr(acr_profile192_sub[0], 20'd24576, 20'd25179, "static VGA 192 kHz ACR");
-    profile_pixel_clock=32'd74_218_750; #1;
-    check_acr(acr_profile48_sub[0], 20'd6144, 20'd74219, "static HD 48 kHz ACR");
-    check_acr(acr_profile96_sub[0], 20'd12288, 20'd74219, "static HD 96 kHz ACR");
-    check_acr(acr_profile192_sub[0], 20'd24576, 20'd74219, "static HD 192 kHz ACR");
-    profile_pixel_clock=32'd60_000_000; #1;
-    check_acr(acr_profile48_sub[0], 20'd6144, 20'd0, "unsupported static profile fails closed");
+    profile_vic=8'd34; profile_pixel_clock=32'd25_178_571; #1;
+    check_acr(acr_profile48_sub[0], 20'd6144, 20'd74250, "VIC34 48 kHz ACR ignores dynamic clock bus");
+    check_acr(acr_profile96_sub[0], 20'd12288, 20'd74250, "VIC34 96 kHz ACR ignores dynamic clock bus");
+    check_acr(acr_profile192_sub[0], 20'd24576, 20'd74250, "VIC34 192 kHz ACR ignores dynamic clock bus");
+    profile_vic=8'd16; profile_pixel_clock=32'd60_000_000; #1;
+    check_acr(acr_profile48_sub[0], 20'd6144, 20'd148500, "VIC16 48 kHz ACR ignores dynamic clock bus");
+    check_acr(acr_profile96_sub[0], 20'd12288, 20'd148500, "VIC16 96 kHz ACR ignores dynamic clock bus");
+    check_acr(acr_profile192_sub[0], 20'd24576, 20'd148500, "VIC16 192 kHz ACR ignores dynamic clock bus");
+    profile_vic=8'd0; #1;
+    check_acr(acr_profile48_sub[0], 20'd6144, 20'd0, "unsupported VIC fails closed");
     check(acr48_sub[1] === acr48_sub[0] && acr48_sub[2] === acr48_sub[0] &&
           acr48_sub[3] === acr48_sub[0], "ACR values must repeat in all four subpackets");
 

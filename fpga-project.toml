@@ -99,6 +99,11 @@ sources = ["ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv", "tests/rtl/tb_
 top = "tb_hdmi_clock_profile_mux"
 
 [[tests.bench]]
+name = "tb_hdmi_four_mode_clocks"
+sources = ["ip/video_pipeline_1_0/hdl/hdmi_clock_profile_mux.sv", "tests/rtl/tb_hdmi_four_mode_clocks.sv"]
+top = "tb_hdmi_four_mode_clocks"
+
+[[tests.bench]]
 name = "tb_hdmi_primitives"
 iverilog = true
 sources = ["ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_symbol_encoder.sv", "tests/rtl/tb_hdmi_primitives.sv"]
@@ -162,7 +167,7 @@ top = "tb_hdmi_pcm_profile_rates"
 
 [[tests.bench]]
 name = "tb_embedded_video_ip_7series_tx"
-artifacts = ["hdmi_tx_line_start.bmp"]
+artifacts = ["hdmi_tx_frame_pattern.bmp"]
 sources = ["ip/video_pipeline_1_0/hdl/embedded_video_ip_7series_tx.sv", "ip/video_pipeline_1_0/hdl/embedded_video_ip_reset_sync.sv", "ip/video_pipeline_1_0/hdl/hdmi_line_slot_scheduler.sv", "ip/video_pipeline_1_0/hdl/hdmi_pcm_packet_source.sv", "ip/video_pipeline_1_0/hdl/hdmi_packet_assembler.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_video_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_tmds_mode_mux.sv", "ip/video_pipeline_1_0/hdl/hdmi_terc4_encoder.sv", "ip/video_pipeline_1_0/hdl/hdmi_bch_ecc.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_sample_packet.sv", "ip/video_pipeline_1_0/hdl/hdmi_audio_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_avi_infoframe.sv", "ip/video_pipeline_1_0/hdl/hdmi_acr_packet.sv", "ip/video_pipeline_1_0/hdl/audio_pcm_async_fifo.sv", "ip/video_pipeline_1_0/hdl/audio_gain_q15.sv", "tests/rtl/tb_embedded_video_ip_7series_tx.sv"]
 top = "tb_embedded_video_ip_7series_tx"
 
@@ -184,3 +189,8 @@ command = ["python3", "tools/package_release.py", "--root", "{root}", "--output"
 inputs = ["tools/package_release.py", "VERSION", "LICENSES/**", "docs/ip-package-quickstart.md", "software/video_out.c", "software/video_out.h", "software/platforms/xilinx_zynq7000/**"]
 outputs = ["build/fpga-flow/artifacts/releases/EmbeddedVideoIP-{package_version}-vivado-2025.2.1.zip", "build/fpga-flow/artifacts/releases/EmbeddedVideoIP-PS-Zynq7000-{package_version}.zip", "build/fpga-flow/artifacts/releases/SHA256SUMS"]
 success_markers = ["EMBEDDED_VIDEO_IP_RELEASE_PASS"]
+
+[[tests.bench]]
+name = "tb_video_pipeline_output_mode_1080p60"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
+top = "tb_video_pipeline_output_mode_1080p60"

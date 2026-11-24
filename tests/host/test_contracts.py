@@ -22,7 +22,7 @@ class ContractTests(unittest.TestCase):
             self.assertRegex(top, rf"parameter integer {name}\s*=\s*{contract[name.lower()]}\b")
         for name in ("OUTPUT_WIDTH", "OUTPUT_HEIGHT"):
             self.assertIn(f".{name}({contract['max_' + name.lower()]})", top)
-        rtl_vics = {int(value) for value in re.findall(r"active_video_vic\s*=\s*8'd(\d+)", tx)} - {0}
+        rtl_vics = {int(value) for value in re.findall(r"active_video_vic\s*(?:<=|=)\s*8'd(\d+)", tx)} - {0}
         self.assertEqual(set(contract["supported_vic"]), rtl_vics)
         for pixel_format in contract["input_formats"]:
             self.assertIn("VIDEO_OUT_PIX_" + pixel_format, header)
@@ -37,8 +37,10 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(contract["data_width_bits"], 48)
         self.assertEqual(contract["sample_width_bits"], 24)
         self.assertEqual(contract["channels"], {"left": "TDATA[23:0]", "right": "TDATA[47:24]"})
-        self.assertIn(".sample_in($signed(fifo_rd_data[23:0]))", source)
-        self.assertIn(".sample_in($signed(fifo_rd_data[47:24]))", source)
+        self.assertIn("gain_sample_left <= $signed(fifo_rd_data[23:0])", source)
+        self.assertIn("gain_sample_right <= $signed(fifo_rd_data[47:24])", source)
+        self.assertIn("gain_product_left <= gain_sample_left * gain_coefficient", source)
+        self.assertIn("gain_product_right <= gain_sample_right * gain_coefficient", source)
         supported = {int(value.replace("_", "")) for value in re.findall(
             r"AUDIO_SAMPLE_RATE_HZ != ([0-9_]+)", acr)}
         self.assertEqual(set(contract["sample_rates_hz"]), supported)

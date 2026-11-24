@@ -44,6 +44,8 @@ class RegressionRunnerTests(unittest.TestCase):
         self.assertTrue(runner._resume_hit(self.bench, out, fingerprint))
         self.assertNotEqual(fingerprint, runner._fingerprint(self.bench, self.root / "vivado", "Vivado 2"))
         self.assertNotEqual(fingerprint, runner._fingerprint(dataclasses.replace(self.bench, defines=("FLAG",)), self.root / "vivado", "Vivado 1"))
+        self.assertNotEqual(fingerprint, runner._fingerprint(
+            self.bench, self.root / "vivado", "Vivado 1", sim_mode="standard"))
         frame.unlink()
         self.assertFalse(runner._resume_hit(self.bench, out, fingerprint))
         frame.write_bytes(b"image")
@@ -53,6 +55,46 @@ class RegressionRunnerTests(unittest.TestCase):
     def test_bmp_marker_alone_cannot_pass_a_bench(self) -> None:
         self.assertIsNone(runner._success_marker("BMP_PASS: image\n", self.bench))
         self.assertTrue(runner._has_failure("Fatal: TEST_FAIL: mismatch\n"))
+
+    def test_standalone_mode_runs_through_xelab_and_preserves_outputs(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run_checked(command, cwd, log, timeout_seconds):
+            calls.append(command)
+            if Path(command[0]).name == "xelab":
+                (Path(cwd) / "frame.bmp").write_bytes(b"image")
+                log.write("TEST_PASS: standalone\n")
+
+        with patch.object(runner, "run_checked", side_effect=fake_run_checked):
+            runner.run_bench(self.bench, self.root / "vivado",
+                             self.root / "build/fpga-flow/tests", "Vivado 1",
+                             resume=False, sim_mode="standalone")
+
+        names = [Path(command[0]).name for command in calls]
+        self.assertEqual(names, ["xvlog", "xelab"])
+        self.assertIn("-a", calls[-1])
+        self.assertIn("-R", calls[-1])
+        out = self.root / "build/fpga-flow/tests/bench"
+        self.assertTrue((out / "frame.bmp").is_file())
+        self.assertEqual(json.loads((out / "bench.json").read_text())["status"], "passed")
+
+    def test_standard_mode_keeps_separate_xsim_for_debug(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run_checked(command, cwd, log, timeout_seconds):
+            calls.append(command)
+            if Path(command[0]).name == "xsim":
+                (Path(cwd) / "frame.bmp").write_bytes(b"image")
+                log.write("TEST_PASS: standard\n")
+
+        with patch.object(runner, "run_checked", side_effect=fake_run_checked):
+            runner.run_bench(self.bench, self.root / "vivado",
+                             self.root / "build/fpga-flow/tests", "Vivado 1",
+                             resume=False, sim_mode="standard")
+
+        names = [Path(command[0]).name for command in calls]
+        self.assertEqual(names, ["xvlog", "xelab", "xsim"])
+        self.assertNotIn("-a", calls[1])
 
 
 if __name__ == "__main__":

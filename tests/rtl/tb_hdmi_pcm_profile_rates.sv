@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 module tb_hdmi_pcm_profile_rates;
-  localparam integer SAMPLE_PHASE_TEST_CYCLES = 300_000;
+  // Long enough to observe at least four ACR intervals at 148.5 MHz / 2200.
+  localparam integer SAMPLE_PHASE_TEST_CYCLES = 750_000;
   localparam integer FIFO_ADDR_WIDTH = 3;
   logic pixel_clk=0, audio_pcm_clk=0, resetn=0;
   logic line_prepare=0, vsync=0, linegen_enable=0;
@@ -30,6 +31,18 @@ module tb_hdmi_pcm_profile_rates;
   logic sample_observe=0;
   integer cycles, error_abs;
   longint unsigned expected48,expected96,expected192,actual_term,expected_term;
+
+  covergroup profile_rate_matrix_cg with function sample(input integer mode_id,
+                                                         input integer rate_khz);
+    mode_cp: coverpoint mode_id {
+      bins vga480={0}; bins hd720={1}; bins hd1080p30={2}; bins hd1080p60={3};
+    }
+    rate_cp: coverpoint rate_khz {
+      bins fs48={48}; bins fs96={96}; bins fs192={192};
+    }
+    mode_x_rate: cross mode_cp,rate_cp;
+  endgroup
+  profile_rate_matrix_cg profile_rate_cov = new();
 
   always #5 pixel_clk=~pixel_clk;
   always #3 audio_pcm_clk=~audio_pcm_clk;
@@ -231,7 +244,7 @@ module tb_hdmi_pcm_profile_rates;
       // Stop audio/packet collection while switching the two timing values.
       @(negedge pixel_clk); linegen_enable=1'b0; sample_observe=1'b0; hdmi_audio_enable=1'b0;
       repeat(8) @(posedge pixel_clk);
-      @(negedge pixel_clk); pixel_clock_hz=pclk; h_total=htotal;
+      @(negedge pixel_clk); pixel_clock_hz=pclk; h_total=htotal; video_vic=vic;
       cadence_min=min_interval; cadence_max=max_interval;
       repeat(8) @(posedge pixel_clk);
       if (profile48.g_hdmi_audio_enabled.profile_params_changed ||
@@ -303,6 +316,9 @@ module tb_hdmi_pcm_profile_rates;
       error_abs=(actual_term_local>expected_term_local) ?
         integer'(actual_term_local-expected_term_local) : integer'(expected_term_local-actual_term_local);
       if (error_abs>tolerance_local) $fatal(1,"%s 192 kHz ACR long-term line cadence mismatch",label);
+      profile_rate_cov.sample(mode_id,48);
+      profile_rate_cov.sample(mode_id,96);
+      profile_rate_cov.sample(mode_id,192);
       $display("PROFILE_PASS: %s pclk=%0d htotal=%0d sample_due=%0d/%0d/%0d ACR_intervals=%0d/%0d/%0d",
                label,pclk,htotal,sample_due48,sample_due96,sample_due192,
                interval_count48,interval_count96,interval_count192);
@@ -314,8 +330,9 @@ module tb_hdmi_pcm_profile_rates;
     @(negedge pixel_clk); resetn=1; hdmi_audio_enable=1;
     repeat(12) @(posedge pixel_clk);
     run_mode(0,32'd25_178_571,32'd800,8'd1,31,32,"VGA 480p VIC1");
-    run_mode(1,32'd74_218_750,32'd1650,8'd4,45,45,"720p60 VIC4");
-    run_mode(2,32'd74_218_750,32'd2200,8'd34,33,34,"1080p30 VIC34");
+    run_mode(1,32'd74_250_000,32'd1650,8'd4,45,45,"720p60 VIC4");
+    run_mode(2,32'd74_250_000,32'd2200,8'd34,33,34,"1080p30 VIC34");
+    run_mode(3,32'd148_500_000,32'd2200,8'd16,67,68,"1080p60 VIC16");
 
     @(posedge pixel_clk); hdmi_mode_active=1'b0;
     repeat(8) @(posedge pixel_clk);
@@ -325,8 +342,12 @@ module tb_hdmi_pcm_profile_rates;
       fail("DVI mode offered HDMI packets in a sample-rate profile");
     if (!ready48 || !ready96 || !ready192)
       fail("PCM TREADY did not release when DVI disabled audio");
+    if (profile_rate_cov.get_inst_coverage()<100.0)
+      fail($sformatf("profile/sample-rate cross coverage incomplete: %0.2f%%",
+                     profile_rate_cov.get_inst_coverage()));
 
-    $display("TEST_PASS: hdmi_pcm_profile_rates, VGA/720p60/1080p30 x 48/96/192 kHz runtime timing matrix");
+    $display("FUNCTIONAL_COVERAGE_PASS: 4 video profiles x 3 PCM rates=12/12 bins");
+    $display("TEST_PASS: hdmi_pcm_profile_rates, VGA/720p60/1080p30/1080p60 x 48/96/192 kHz runtime timing matrix");
     $finish;
   end
 endmodule

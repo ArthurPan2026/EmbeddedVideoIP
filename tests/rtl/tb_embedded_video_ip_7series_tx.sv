@@ -3,16 +3,20 @@ module tb_embedded_video_ip_7series_tx;
   localparam integer PIXEL_CLOCK_HZ=8_000_000;
   localparam integer AUDIO_SAMPLE_RATE_HZ=48_000;
   localparam integer AUDIO_CLOCK_HZ=4*PIXEL_CLOCK_HZ;
-  localparam integer H_TOTAL=180, H_ACTIVE_SIZE=80, H_SYNC_START=96;
+  // 320x240 synthetic raster: large enough to expose row/column alignment,
+  // color bars, gradients and a checker pattern in the exported frame.
+  localparam integer H_TOTAL=400, H_ACTIVE_SIZE=320, H_SYNC_START=336;
   localparam integer HBLANK_PIXELS=H_TOTAL-H_ACTIVE_SIZE;
-  localparam integer V_TOTAL=53, V_ACTIVE_SIZE=48;
+  localparam integer V_TOTAL=245, V_ACTIVE_SIZE=240;
   localparam integer FRAME_PIXELS=H_TOTAL*V_TOTAL;
-  localparam integer EXPECTED_SAMPLES=(AUDIO_SAMPLE_RATE_HZ*FRAME_PIXELS+PIXEL_CLOCK_HZ/2)/PIXEL_CLOCK_HZ;
+  localparam longint unsigned EXPECTED_SAMPLES=
+      (64'd48_000*FRAME_PIXELS+PIXEL_CLOCK_HZ/2)/PIXEL_CLOCK_HZ;
   localparam logic [2:0] MODE_CONTROL=3'd0, MODE_VIDEO=3'd1,
-                         MODE_VIDEO_PREAMBLE=3'd2, MODE_VIDEO_GUARD=3'd4;
+                         MODE_VIDEO_PREAMBLE=3'd2, MODE_VIDEO_GUARD=3'd4,
+                         MODE_DATA_PAYLOAD=3'd6;
 
   logic pixel_clk=0, serial_clk=0, audio_pcm_clk=0, aresetn=0;
-  logic [7:0] test_x=0;
+  logic [8:0] test_x=0;
   logic [9:0] line_index=0;
   integer frame_counter=0;
   logic [23:0] video_rgb;
@@ -32,6 +36,7 @@ module tb_embedded_video_ip_7series_tx;
   logic ycc_audio_tready, ycc_underflow_event, ycc_overflow_event;
   logic [23:0] ycc_reference_pixel;
   logic audio_underflow_event,audio_overflow_event;
+  logic [1:0] phy_errors, ycc_phy_errors, runtime_phy_errors;
   logic [31:0] audio_phase=0, audio_phase_sum;
   logic audio_sample_due;
   integer next_left_sample=1;
@@ -60,23 +65,55 @@ module tb_embedded_video_ip_7series_tx;
   integer bmp_capture_enable=0;
   integer bmp_rows_captured=0;
   integer bmp_pixel_index=0;
+  integer bmp_checked_pixels=0;
   integer bmp_fd=0;
 
   always #10 pixel_clk=~pixel_clk;
   always #2 serial_clk=~serial_clk;
   always #2.5 audio_pcm_clk=~audio_pcm_clk;
 
+  function automatic logic [23:0] test_pattern_pixel(input integer x, input integer y);
+    integer band;
+    logic [7:0] red, green, blue;
+    begin
+      case (x)
+        0: test_pattern_pixel=24'hFF0000; // row marker: red
+        1: test_pattern_pixel=24'h0000FF; // row marker: blue
+        2: test_pattern_pixel=24'h00FF00; // row marker: green
+        3: test_pattern_pixel=24'hFFFFFF; // row marker: white
+        default: begin
+          if (y < 80) begin
+            band=((x-4)*8)/(H_ACTIVE_SIZE-4);
+            case (band)
+              0: test_pattern_pixel=24'hFF0000;
+              1: test_pattern_pixel=24'h00FF00;
+              2: test_pattern_pixel=24'h0000FF;
+              3: test_pattern_pixel=24'h00FFFF;
+              4: test_pattern_pixel=24'hFF00FF;
+              5: test_pattern_pixel=24'hFFFF00;
+              6: test_pattern_pixel=24'hFFFFFF;
+              default: test_pattern_pixel=24'h808080;
+            endcase
+          end else if (y < 160) begin
+            red=8'(((x-4)*255)/(H_ACTIVE_SIZE-5));
+            green=8'(((y-80)*255)/79);
+            blue=8'((x+y)&255);
+            test_pattern_pixel={red,green,blue};
+          end else if ((((x >> 3) ^ (y >> 3)) & 1) == 1) begin
+            test_pattern_pixel=24'hD0C0A0;
+          end else begin
+            test_pattern_pixel=24'h203050;
+          end
+        end
+      endcase
+    end
+  endfunction
+
   always_comb begin
     video_de=(line_index<V_ACTIVE_SIZE) && (test_x<H_ACTIVE_SIZE);
     hsync=(test_x>=H_SYNC_START && test_x<H_SYNC_START+16);
-    vsync=(line_index>=49 && line_index<52);
-    case (test_x)
-      0: video_rgb=24'hFF0000; // 行首标记：红色
-      1: video_rgb=24'h0000FF; // 行首标记：绿色（RBG打包）
-      2: video_rgb=24'h00FF00; // 行首标记：蓝色（RBG打包）
-      3: video_rgb=24'hFFFFFF; // 行首标记：白色
-      default: video_rgb=24'h808080; // 其余像素固定灰色，便于观察行首过渡
-    endcase
+    vsync=(line_index>=241 && line_index<244);
+    video_rgb=test_pattern_pixel(test_x,line_index);
     audio_phase_sum=audio_phase+AUDIO_SAMPLE_RATE_HZ;
     audio_sample_due=(audio_phase_sum>=AUDIO_CLOCK_HZ);
   end
@@ -122,15 +159,15 @@ module tb_embedded_video_ip_7series_tx;
     end
   endtask
 
-  task automatic write_line_start_bmp;
+  task automatic write_frame_pattern_bmp;
     integer row, col, pad, image_bytes;
-    logic [23:0] pixel;
+    logic [23:0] pixel, expected_pixel;
     begin
       image_bytes = H_ACTIVE_SIZE * V_ACTIVE_SIZE * 3;
       pad = (4 - ((H_ACTIVE_SIZE * 3) % 4)) % 4;
-      bmp_fd = $fopen("hdmi_tx_line_start.bmp","wb");
+      bmp_fd = $fopen("hdmi_tx_frame_pattern.bmp","wb");
       if (bmp_fd == 0)
-        $fatal(1,"无法创建 hdmi_tx_line_start.bmp");
+        $fatal(1,"无法创建 hdmi_tx_frame_pattern.bmp");
       write_bmp_byte(8'h42); write_bmp_byte(8'h4D);
       write_bmp_u32(54 + image_bytes + pad * V_ACTIVE_SIZE);
       write_bmp_u16(0); write_bmp_u16(0); write_bmp_u32(54);
@@ -141,6 +178,11 @@ module tb_embedded_video_ip_7series_tx;
       for (row = V_ACTIVE_SIZE-1; row >= 0; row = row-1) begin
         for (col = 0; col < H_ACTIVE_SIZE; col = col+1) begin
           pixel = bmp_frame[row][col]; // TX输入为RBG；BMP要求B,G,R字节序
+          expected_pixel=test_pattern_pixel(col,row);
+          if (pixel !== expected_pixel)
+            $fatal(1,"frame pixel mismatch at x=%0d y=%0d: expected=%06h actual=%06h",
+                   col,row,expected_pixel,pixel);
+          bmp_checked_pixels=bmp_checked_pixels+1;
           write_bmp_byte(pixel[15:8]);
           write_bmp_byte(pixel[7:0]);
           write_bmp_byte(pixel[23:16]);
@@ -150,7 +192,10 @@ module tb_embedded_video_ip_7series_tx;
       end
       $fclose(bmp_fd);
       bmp_fd = 0;
-      $display("BMP_PASS: hdmi_tx_line_start.bmp (%0dx%0d)",H_ACTIVE_SIZE,V_ACTIVE_SIZE);
+      if (bmp_checked_pixels != H_ACTIVE_SIZE*V_ACTIVE_SIZE)
+        $fatal(1,"frame pattern verification count mismatch: %0d",bmp_checked_pixels);
+      $display("BMP_PASS: hdmi_tx_frame_pattern.bmp (%0dx%0d, pixels=%0d)",
+               H_ACTIVE_SIZE,V_ACTIVE_SIZE,bmp_checked_pixels);
     end
   endtask
 
@@ -184,7 +229,8 @@ module tb_embedded_video_ip_7series_tx;
     .H_TOTAL(H_TOTAL), .H_SYNC_START(H_SYNC_START), .HSYNC_ACTIVE_LEVEL(1'b1),
     .ACR_N(6144)
   ) dut (
-    .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
+    .pixel_clk(pixel_clk), .serial_clk(serial_clk),
+    .serdes_pixel_clk(pixel_clk), .audio_pcm_clk(audio_pcm_clk),
     .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
     .video_rgb(video_rgb), .video_de(video_de),
     .hsync(hsync), .vsync(vsync), .mode_timing_profile(2'd0), .audio_pcm_tdata(audio_pcm_tdata),
@@ -193,7 +239,7 @@ module tb_embedded_video_ip_7series_tx;
     .audio_gain_q15(audio_gain_q15), .tmds_tx_clk_p(tmds_tx_clk_p),
     .tmds_tx_clk_n(tmds_tx_clk_n), .tmds_tx_data_p(tmds_tx_data_p),
     .tmds_tx_data_n(tmds_tx_data_n), .audio_underflow_event(audio_underflow_event),
-    .audio_overflow_event(audio_overflow_event)
+    .audio_overflow_event(audio_overflow_event), .phy_errors(phy_errors)
   );
 
   // Run a second, audio-disabled TX in YCbCr 4:4:4 mode beside the RGB8
@@ -207,14 +253,16 @@ module tb_embedded_video_ip_7series_tx;
     .ACR_N(6144), .OUTPUT_COLOR_MODE(1), .COLORIMETRY(1), .YCC_RANGE(0),
     .OUTPUT_COLOR_DEPTH(8)
   ) dut_ycbcr (
-    .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
+    .pixel_clk(pixel_clk), .serial_clk(serial_clk),
+    .serdes_pixel_clk(pixel_clk), .audio_pcm_clk(audio_pcm_clk),
     .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
     .video_rgb(video_rgb), .video_de(video_de), .hsync(hsync), .vsync(vsync),
     .mode_timing_profile(2'd0), .audio_pcm_tdata(48'd0), .audio_pcm_tvalid(1'b0), .audio_pcm_tready(ycc_audio_tready),
     .hdmi_audio_enable(1'b0), .audio_mute(1'b0), .audio_gain_q15(17'd32768),
     .tmds_tx_clk_p(tmds_tx_clk_ycc_p), .tmds_tx_clk_n(tmds_tx_clk_ycc_n),
     .tmds_tx_data_p(tmds_tx_data_ycc_p), .tmds_tx_data_n(tmds_tx_data_ycc_n),
-    .audio_underflow_event(ycc_underflow_event), .audio_overflow_event(ycc_overflow_event)
+    .audio_underflow_event(ycc_underflow_event), .audio_overflow_event(ycc_overflow_event),
+    .phy_errors(ycc_phy_errors)
   );
 
   // Runtime timing profile path: exercise the active VIC/clock/line geometry
@@ -226,7 +274,8 @@ module tb_embedded_video_ip_7series_tx;
     .HSYNC_ACTIVE_LEVEL(1'b1), .USE_RUNTIME_VIDEO_PROFILE(1),
     .OUTPUT_COLOR_MODE(0), .OUTPUT_COLOR_DEPTH(8)
   ) dut_runtime_profile (
-    .pixel_clk(pixel_clk), .serial_clk(serial_clk), .audio_pcm_clk(audio_pcm_clk),
+    .pixel_clk(pixel_clk), .serial_clk(serial_clk),
+    .serdes_pixel_clk(pixel_clk), .audio_pcm_clk(audio_pcm_clk),
     .aresetn(aresetn), .hdmi_mode_request(hdmi_mode_request),
     .video_rgb(video_rgb), .video_de(video_de), .hsync(hsync), .vsync(vsync),
     .mode_timing_profile(runtime_timing_profile), .audio_pcm_tdata(48'd0),
@@ -234,8 +283,20 @@ module tb_embedded_video_ip_7series_tx;
     .hdmi_audio_enable(1'b0), .audio_mute(1'b0), .audio_gain_q15(17'd32768),
     .tmds_tx_clk_p(runtime_tmds_clk_p), .tmds_tx_clk_n(runtime_tmds_clk_n),
     .tmds_tx_data_p(runtime_tmds_data_p), .tmds_tx_data_n(runtime_tmds_data_n),
-    .audio_underflow_event(runtime_underflow_event), .audio_overflow_event(runtime_overflow_event)
+    .audio_underflow_event(runtime_underflow_event), .audio_overflow_event(runtime_overflow_event),
+    .phy_errors(runtime_phy_errors)
   );
+
+  wire [2:0] observed_tx_symbol_mode=dut.u_hdmi_mode_mux.mode_pipe[2];
+  covergroup tx_symbol_mode_coverage_cg @(posedge pixel_clk);
+    mode_cp: coverpoint observed_tx_symbol_mode {
+      bins control={MODE_CONTROL}; bins active_video={MODE_VIDEO};
+      bins video_preamble={MODE_VIDEO_PREAMBLE}; bins data_preamble={3'd3};
+      bins video_guard={MODE_VIDEO_GUARD}; bins data_guard={3'd5};
+      bins data_payload={MODE_DATA_PAYLOAD};
+    }
+  endgroup
+  tx_symbol_mode_coverage_cg tx_symbol_mode_cov = new();
 
   function automatic logic [19:0] expected_runtime_cts(input logic [31:0] pclk);
     logic [63:0] numerator;
@@ -280,6 +341,9 @@ module tb_embedded_video_ip_7series_tx;
         $fatal(1,"line-slot scheduler did not take the active timing profile");
     end
   endtask
+
+  // The two-bit profile enum has four legal values; test each instead of
+  // treating the VIC16/1080p60 slot as an invalid value.
 
   hdmi_rgb_to_ycbcr444 #(.COLORIMETRY(1), .YCC_RANGE(0)) u_ycbcr_reference (
     .rgb_rbg(dut_ycbcr.rgb_pipe[10]), .ycbcr_rbg(ycc_reference_pixel)
@@ -433,6 +497,9 @@ module tb_embedded_video_ip_7series_tx;
     if (aresetn && dut.tmds_serializer_aresetn && !$isunknown({tmds_tx_data_p,tmds_tx_data_n}) &&
         ((tmds_tx_data_p ^ tmds_tx_data_n)!==3'b111))
       $fatal(1,"HDMI数据差分对未互补");
+    if (measure_active && dut.u_hdmi_mode_mux.mode_pipe[2]===MODE_DATA_PAYLOAD &&
+        encoder_de_d3===1'b1)
+      $fatal(1,"HDMI data-island payload overlapped active video pixels");
   end
 
   initial begin
@@ -485,9 +552,12 @@ module tb_embedded_video_ip_7series_tx;
     if (bmp_rows_captured != V_ACTIVE_SIZE || bmp_pixel_index != H_ACTIVE_SIZE)
       $fatal(1,"BMP帧捕获尺寸错误：rows=%0d last_row_pixels=%0d",
              bmp_rows_captured,bmp_pixel_index);
-    write_line_start_bmp();
+    write_frame_pattern_bmp();
     if (video_first_pixel_error != 0)
-      $fatal(1,"行首前4像素与视频DE对齐检查失败；查看 hdmi_tx_line_start.bmp");
+      $fatal(1,"行首前4像素与视频DE对齐检查失败；查看 hdmi_tx_frame_pattern.bmp");
+
+    if (phy_errors !== 2'b00 || ycc_phy_errors !== 2'b00 || runtime_phy_errors !== 2'b00)
+      $fatal(1,"PHY status error: RGB=%b YCbCr=%b runtime=%b",phy_errors,ycc_phy_errors,runtime_phy_errors);
 
     if (frame_samples_out<EXPECTED_SAMPLES-1 || frame_samples_out>EXPECTED_SAMPLES+1)
       $fatal(1,"完整帧音频输出样本数错误：actual=%0d expected=%0d",frame_samples_out,EXPECTED_SAMPLES);
@@ -503,12 +573,19 @@ module tb_embedded_video_ip_7series_tx;
       $fatal(1,"视频前导/保护带边界检查次数不足：%0d",video_boundaries_checked);
     if (video_first_pixel_checks < 40)
       $fatal(1,"活动视频行首像素检查次数不足：%0d",video_first_pixel_checks);
+    if (tx_symbol_mode_cov.get_inst_coverage()<100.0)
+      $fatal(1,"TX symbol-mode coverage incomplete: %0.2f%%",
+             tx_symbol_mode_cov.get_inst_coverage());
 
     check_runtime_profile(2'd0,32'd25_178_571,32'd800,32'd640,32'd656,8'd1,8'h18);
-    check_runtime_profile(2'd1,32'd74_218_750,32'd1650,32'd1280,32'd1390,8'd4,8'h28);
-    check_runtime_profile(2'd2,32'd74_218_750,32'd2200,32'd1920,32'd2008,8'd34,8'h28);
-    $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d video_boundaries=%0d first_pixels=%0d",
-             frame_samples_in,frame_samples_out,vblank_packet_starts,video_boundaries_checked,video_first_pixel_checks);
+    check_runtime_profile(2'd1,32'd74_250_000,32'd1650,32'd1280,32'd1390,8'd4,8'h28);
+    check_runtime_profile(2'd2,32'd74_250_000,32'd2200,32'd1920,32'd2008,8'd34,8'h28);
+    check_runtime_profile(2'd3,32'd148_500_000,32'd2200,32'd1920,32'd2008,8'd16,8'h28);
+    check_runtime_profile(2'd0,32'd25_178_571,32'd800,32'd640,32'd656,8'd1,8'h18);
+    $display("FUNCTIONAL_COVERAGE_PASS: all seven HDMI TMDS symbol modes");
+    $display("TEST_PASS: embedded_video_ip_7series_tx, input=%0d output=%0d vblank_packets=%0d video_boundaries=%0d first_pixels=%0d bmp_pixels=%0d",
+             frame_samples_in,frame_samples_out,vblank_packet_starts,video_boundaries_checked,
+             video_first_pixel_checks,bmp_checked_pixels);
     $finish;
   end
 endmodule

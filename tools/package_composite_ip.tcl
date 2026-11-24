@@ -26,109 +26,76 @@ set_property PROCESSING_ORDER LATE $cdc_xdc_file
 set_property USED_IN_SYNTHESIS true $cdc_xdc_file
 set_property USED_IN_IMPLEMENTATION true $cdc_xdc_file
 create_bd_design embedded_video_ip_video_out
-set aclk [create_bd_port -dir I -type clk -freq_hz 100000000 aclk]
-set_property CONFIG.FREQ_HZ 100000000 $aclk
-set refclk [create_bd_port -dir I -type clk -freq_hz 50000000 hdmi_ref_clk]
-set_property CONFIG.FREQ_HZ 50000000 $refclk
 set resetn [create_bd_port -dir I -type rst aresetn]
 set_property CONFIG.POLARITY ACTIVE_LOW $resetn
-set pixel_clk_port [create_bd_port -dir O -type clk pixel_clk]
-# Vivado's static interface metadata describes the VGA boot profile; runtime selection
-# changes this clock to the shared HD profile (74.21875 MHz / 371.09375 MHz).
-set_property CONFIG.FREQ_HZ 25178571 $pixel_clk_port
-set serial_clk_port [create_bd_port -dir O -type clk serial_clk]
-set_property CONFIG.FREQ_HZ 125892857 $serial_clk_port
-set pixel_reset_port [create_bd_port -dir O -type rst pixel_aresetn]
-set_property CONFIG.POLARITY ACTIVE_LOW $pixel_reset_port
-set pixel_locked_port [create_bd_port -dir O hdmi_mmcm_locked]
-set pixel_reset_ext_port [create_bd_port -dir O pixel_reset_ext_asserted]
-set clock_profile_sel_port [create_bd_port -dir I clock_profile_sel]
-set timing_profile_port [create_bd_port -dir I -from 1 -to 0 timing_profile]
-set pixel_reset_hold_port [create_bd_port -dir I pixel_reset_hold]
-set locked_profiles_port [create_bd_port -dir O -from 1 -to 0 locked_profiles]
+
+# Keep only the AXI4S-to-video subcore. VGA and HD clock generation,
+# timing and pixel reset are canonical synthesizable RTL.
 set video_out [create_bd_cell -type ip -vlnv xilinx.com:ip:v_axi4s_vid_out:4.0 video_out]
 set_property CONFIG.C_HAS_ASYNC_CLK 1 $video_out
 set_property CONFIG.C_VTG_MASTER_SLAVE 1 $video_out
-
-# Independent VGA and HD clock syntheses; the HD outputs retain the required 5:1 TMDS ratio.
-set clk_wiz_vga [create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz:6.0 clk_wiz_vga]
-set_property -dict [list CONFIG.PRIM_IN_FREQ {50.000} CONFIG.CLKIN1_JITTER_PS {200.0} CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {25.178571} CONFIG.CLKOUT2_REQUESTED_OUT_FREQ {125.892857} CONFIG.CLKOUT2_USED {true} CONFIG.NUM_OUT_CLKS {2} CONFIG.RESET_PORT {resetn} CONFIG.RESET_TYPE {ACTIVE_LOW} CONFIG.USE_LOCKED {true} CONFIG.USE_RESET {true}] $clk_wiz_vga
-set clk_wiz_hd [create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz:6.0 clk_wiz_hd]
-set_property -dict [list CONFIG.PRIM_IN_FREQ {50.000} CONFIG.CLKIN1_JITTER_PS {200.0} CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.21875} CONFIG.CLKOUT2_REQUESTED_OUT_FREQ {371.09375} CONFIG.CLKOUT2_USED {true} CONFIG.NUM_OUT_CLKS {2} CONFIG.RESET_PORT {resetn} CONFIG.RESET_TYPE {ACTIVE_LOW} CONFIG.USE_LOCKED {true} CONFIG.USE_RESET {true}] $clk_wiz_hd
-
-set clock_mux [create_bd_cell -type module -reference embedded_video_ip_clock_profile_mux_wrapper clock_profile_mux]
-set timing_gen [create_bd_cell -type module -reference embedded_video_ip_timing_gen_wrapper timing_gen]
-set rst [create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 pixel_reset]
-# External reset assertion and controlled mode-transition hold share the reset synchronizer.
-set_property -dict [list CONFIG.C_EXT_RESET_HIGH {1} CONFIG.C_AUX_RESET_HIGH {1}] $rst
-set inv [create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 reset_invert]
-set_property -dict [list CONFIG.C_OPERATION {not} CONFIG.C_SIZE {1}] $inv
-set reset_or [create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 reset_or_mode_hold]
-set_property -dict [list CONFIG.C_OPERATION {or} CONFIG.C_SIZE {1}] $reset_or
-set aclken_invert [create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 video_out_aclken_invert]
-set_property -dict [list CONFIG.C_OPERATION {not} CONFIG.C_SIZE {1}] $aclken_invert
-set zero [create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 reset_zero]
-set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] $zero
-set video_out_pixel_ce_one [create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 video_out_pixel_ce_one]
-set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {1}] $video_out_pixel_ce_one
-
-connect_bd_intf_net [get_bd_intf_pins $timing_gen/video_timing] [get_bd_intf_pins $video_out/vtiming_in]
+set aclk [create_bd_port -dir I -type clk -freq_hz 100000000 aclk]
+set_property CONFIG.FREQ_HZ 100000000 $aclk
 connect_bd_net $aclk [get_bd_pins $video_out/aclk]
 connect_bd_net $resetn [get_bd_pins $video_out/aresetn]
-connect_bd_net $refclk [get_bd_pins $clk_wiz_vga/clk_in1] [get_bd_pins $clk_wiz_hd/clk_in1]
-connect_bd_net $resetn [get_bd_pins $clk_wiz_vga/resetn] [get_bd_pins $clk_wiz_hd/resetn] [get_bd_pins $inv/Op1]
-connect_bd_net [get_bd_pins $clk_wiz_vga/clk_out1] [get_bd_pins $clock_mux/vga_pixel_clk]
-connect_bd_net [get_bd_pins $clk_wiz_vga/clk_out2] [get_bd_pins $clock_mux/vga_serial_clk]
-connect_bd_net [get_bd_pins $clk_wiz_vga/locked] [get_bd_pins $clock_mux/vga_locked]
-connect_bd_net [get_bd_pins $clk_wiz_hd/clk_out1] [get_bd_pins $clock_mux/hd_pixel_clk]
-connect_bd_net [get_bd_pins $clk_wiz_hd/clk_out2] [get_bd_pins $clock_mux/hd_serial_clk]
-connect_bd_net [get_bd_pins $clk_wiz_hd/locked] [get_bd_pins $clock_mux/hd_locked]
-connect_bd_net $clock_profile_sel_port [get_bd_pins $clock_mux/clock_profile_sel]
-connect_bd_net [get_bd_pins $clock_mux/pixel_clk] $pixel_clk_port [get_bd_pins $timing_gen/pixel_clk] [get_bd_pins $video_out/vid_io_out_clk] [get_bd_pins $rst/slowest_sync_clk]
-connect_bd_net [get_bd_pins $clock_mux/serial_clk] $serial_clk_port
-connect_bd_net [get_bd_pins $clock_mux/locked_profiles] $locked_profiles_port
-connect_bd_net [get_bd_pins $clock_mux/selected_locked] $pixel_locked_port [get_bd_pins $rst/dcm_locked]
-connect_bd_net $pixel_reset_hold_port [get_bd_pins $aclken_invert/Op1]
-connect_bd_net [get_bd_pins $aclken_invert/Res] [get_bd_pins $video_out/aclken]
-connect_bd_net [get_bd_pins $video_out_pixel_ce_one/dout] [get_bd_pins $video_out/vid_io_out_ce]
-connect_bd_net $timing_profile_port [get_bd_pins $timing_gen/timing_profile]
-connect_bd_net [get_bd_pins $video_out_pixel_ce_one/dout] [get_bd_pins $timing_gen/enable]
-connect_bd_net [get_bd_pins $inv/Res] [get_bd_pins $reset_or/Op1]
-connect_bd_net $pixel_reset_hold_port [get_bd_pins $reset_or/Op2]
-connect_bd_net [get_bd_pins $reset_or/Res] $pixel_reset_ext_port [get_bd_pins $rst/ext_reset_in]
-connect_bd_net [get_bd_pins $zero/dout] [get_bd_pins $rst/aux_reset_in] [get_bd_pins $rst/mb_debug_sys_rst] [get_bd_pins $video_out/fid]
-connect_bd_net [get_bd_pins $rst/peripheral_aresetn] $pixel_reset_port [get_bd_pins $timing_gen/resetn]
-connect_bd_net [get_bd_pins $rst/peripheral_reset] [get_bd_pins $video_out/vid_io_out_reset]
-
 make_bd_intf_pins_external [get_bd_intf_pins $video_out/video_in]
 set stream_ports [get_bd_intf_ports -quiet]
 if {[llength $stream_ports] != 1} { error "Expected one external video AXI4-Stream interface" }
 set_property name s_axis_video [lindex $stream_ports 0]
-set video_rgb_port [create_bd_port -dir O -from 23 -to 0 video_rgb]
-set video_de_port [create_bd_port -dir O video_de]
-set video_hsync_port [create_bd_port -dir O video_hsync]
-set video_vsync_port [create_bd_port -dir O video_vsync]
-set video_vsync_raw_port [create_bd_port -dir O video_vsync_raw]
-connect_bd_net [get_bd_pins $video_out/vid_data] $video_rgb_port
-connect_bd_net [get_bd_pins $video_out/vid_active_video] $video_de_port
-connect_bd_net [get_bd_pins $video_out/vid_hsync] $video_hsync_port
-connect_bd_net [get_bd_pins $video_out/vid_vsync] $video_vsync_port
-connect_bd_net [get_bd_pins $timing_gen/vsync_raw] $video_vsync_raw_port
+make_bd_intf_pins_external [get_bd_intf_pins $video_out/vtiming_in]
+foreach pin_name {vid_io_out_clk vid_io_out_reset aclken vid_io_out_ce fid} {
+  make_bd_pins_external [get_bd_pins $video_out/$pin_name]
+}
+foreach pin_name {vid_data vid_active_video vid_hsync vid_vsync} {
+  make_bd_pins_external [get_bd_pins $video_out/$pin_name]
+}
 validate_bd_design
 save_bd_design
 set bd_file [get_files -quiet embedded_video_ip_video_out.bd]
-if {[llength $bd_file] != 1} { error "视频输出 BD 数量应为 1" }
+if {[llength $bd_file] != 1} { error "Expected one embedded_video_ip_video_out BD" }
 generate_target all $bd_file
-set wrapper_file [make_wrapper -files $bd_file -top]
-if {![file isfile $wrapper_file]} { error "缺少生成的视频输出 wrapper" }
-add_files -norecurse $wrapper_file
-set_property top embedded_video_ip_video_out_wrapper [current_fileset]
-update_compile_order -fileset sources_1
+# The canonical video-out wrapper instantiates the BD-generated child wrapper
+# directly. Package both that wrapper and the generated Xilinx subcore HDL so
+# consumers do not depend on files hidden under the disposable .gen directory.
+set generated_bd_root [file join $project_dir embedded_video_ip_package.gen sources_1 bd embedded_video_ip_video_out]
+set video_out_wrapper [file join $generated_bd_root ip embedded_video_ip_video_out_video_out_0 synth embedded_video_ip_video_out_video_out_0.v]
+if {![file isfile $video_out_wrapper]} {
+  error "Missing generated v_axi4s_vid_out wrapper: $video_out_wrapper"
+}
+set video_out_impl_matches [glob -nocomplain -directory [file join $generated_bd_root ipshared] */hdl/v_axi4s_vid_out_v4_0_vl_rfs.v]
+if {[llength $video_out_impl_matches] != 1} {
+  error "Expected exactly one generated v_axi4s_vid_out implementation, found [llength $video_out_impl_matches]"
+}
+set video_out_impl [lindex $video_out_impl_matches 0]
+# Use the canonical source wrapper, not a generated duplicate BD wrapper.
 set_property top embedded_video_ip_top [current_fileset]
 update_compile_order -fileset sources_1
 ipx::package_project -root_dir $package_root -vendor panfpga.org -library video -taxonomy /Video -import_files -force
 set core [ipx::current_core]
-set_property core_revision 3 $core
+# The parent wrapper instantiates this generated child wrapper by module name;
+# the child wrapper in turn instantiates v_axi4s_vid_out_v4_0_20. Keep both
+# project-local in the package and register them for synthesis and simulation.
+set package_vout_wrapper_relative src/embedded_video_ip_video_out_video_out_0.v
+set package_vout_impl_relative src/v_axi4s_vid_out_v4_0_vl_rfs.v
+file copy -force $video_out_wrapper [file join $package_root $package_vout_wrapper_relative]
+file copy -force $video_out_impl [file join $package_root $package_vout_impl_relative]
+set synth_group [ipx::get_file_groups xilinx_anylanguagesynthesis -of_objects $core]
+set sim_group [ipx::get_file_groups xilinx_anylanguagebehavioralsimulation -of_objects $core]
+if {[llength $synth_group] != 1 || [llength $sim_group] != 1} {
+  error "Composite package synthesis or simulation file group is missing"
+}
+foreach relative_file [list $package_vout_wrapper_relative $package_vout_impl_relative] {
+  ipx::add_file $relative_file $synth_group
+  ipx::add_file $relative_file $sim_group
+  set synth_file [ipx::get_files $relative_file -of_objects $synth_group]
+  set sim_file [ipx::get_files $relative_file -of_objects $sim_group]
+  if {[llength $synth_file] != 1 || [llength $sim_file] != 1} {
+    error "Generated video-out source was not registered in package file groups: $relative_file"
+  }
+  set_property type verilogSource $synth_file
+  set_property type verilogSource $sim_file
+}
+set_property core_revision 7 $core
 set version_fd [open [file join $repo_root VERSION] r]
 set product_version [string trim [read $version_fd]]
 close $version_fd

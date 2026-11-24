@@ -106,6 +106,7 @@ module tb_hdmi_video_timing_gen;
   );
     begin
       select_profile(profile);
+      timing_enable = 1'b1;
       for (v = 0; v < v_total; v = v + 1) begin
         for (h = 0; h < h_total; h = h + 1) begin
           #1;
@@ -178,9 +179,9 @@ module tb_hdmi_video_timing_gen;
           "reset drives blank safe timing outputs");
     @(negedge pixel_clk);
     resetn = 1'b1;
-    select_profile(2'd3); // Enter the invalid blank state first to align the first raster at (0,0).
-
-    check_profile_frame(2'd0, 10, 6, 1, 2, 7, 4, 1, 1, 1'b0, 1'b0, "VGA480");
+    timing_enable = 1'b0; // Hold any selected raster at origin before switching into the first checked frame.
+    select_profile(2'd3); // VIC16 is valid; the subsequent profile change resets counters to (0,0).
+    check_profile_frame(2'd0, 10, 6, 1, 2, 7, 4, 1, 1, 1'b0, 1'b0, "VGA480 VIC1");
 
     // The upstream video-out timing enable must pause both raster counters.
     @(negedge pixel_clk);
@@ -199,22 +200,15 @@ module tb_hdmi_video_timing_gen;
     check(dut_small.h_count != 12'd0, "VGA raster advanced before profile switch");
     check_profile_frame(2'd1, 12, 8, 2, 1, 9, 6, 1, 1, 1'b1, 1'b1, "720p60");
     check_profile_frame(2'd2, 14, 10, 1, 2, 10, 7, 1, 1, 1'b1, 1'b1, "1080p30 VIC34");
-
-    // Unknown VIC/profile blanks video, holds counters at zero, and can recover to VGA.
-    select_profile(2'd3);
-    check(ACTIVE_VIDEO === 1'b0 && HBLANK === 1'b1 && VBLANK === 1'b1 &&
-          HSYNC === 1'b1 && VSYNC === 1'b1 && FIELD === 1'b0,
-          "invalid profile is fail-safe blank");
-    tick(20);
-    check(dut_small.h_count === 12'd0 && dut_small.v_count === 12'd0,
-          "invalid profile leaves counters stopped");
+    // VIC16 uses the same 1080-line raster geometry and sync polarity at 60 Hz.
+    check_profile_frame(2'd3, 14, 10, 1, 2, 10, 7, 1, 1, 1'b1, 1'b1, "1080p60 VIC16");
     check_profile_frame(2'd0, 10, 6, 1, 2, 7, 4, 1, 1, 1'b0, 1'b0,
-                        "VGA recovery after invalid profile");
+                        "VGA recovery after 1080p60");
 
     $display("TEST_PASS: hdmi_video_timing_gen checks=%0d", checks);
-    $display("Coverage: VIC1/VIC4/VIC34 totals, porches, active areas, sync widths/polarities,");
+    $display("Coverage: VIC1/VIC4/VIC34/VIC16 timing totals, porches, active areas, sync widths/polarities,");
     $display("          exact frame wrap, reset, profile-domain synchronization, mid-frame reset,");
-    $display("          VGA-to-HD/HD-to-HD transitions, invalid-profile fail-safe and recovery.");
+    $display("          VGA-to-HD/HD-to-HD transitions and recovery between all four valid profiles.");
     $finish;
   end
 endmodule

@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 module tb_hdmi_line_slot_scheduler;
-  localparam integer H_TOTAL=140, H_ACTIVE=40, H_SYNC_START=48;
+  localparam logic [15:0] H_TOTAL=16'd4400, H_SYNC_START=16'd4100;
+  logic [15:0] active_size=16'd3840;
   localparam logic [2:0] MODE_CONTROL=3'd0, MODE_VIDEO=3'd1,
                          MODE_VIDEO_PREAMBLE=3'd2, MODE_DATA_PREAMBLE=3'd3,
                          MODE_VIDEO_GUARD=3'd4, MODE_DATA_GUARD=3'd5,
@@ -8,7 +9,7 @@ module tb_hdmi_line_slot_scheduler;
   logic pixel_clk=0, aresetn=0;
   logic hdmi_mode_request=0, hdmi_mode_active_high, hdmi_mode_active_low;
   logic packet_active=0;
-  logic [7:0] test_x=0;
+  logic [15:0] test_x=0;
   logic [3:0] line_index=0;
   logic hsync_high, hsync_low;
   logic raw_de, delayed_de;
@@ -16,6 +17,7 @@ module tb_hdmi_line_slot_scheduler;
   logic prep_high, prep_low, start_high, start_low;
   logic [2:0] mode_high, mode_low;
   integer prepare_events=0, packet_starts=0;
+  integer prepare_events_before_reset=0;
   integer control_run_length=0;
   logic extended_control_seen=0;
   integer cycles;
@@ -27,7 +29,7 @@ module tb_hdmi_line_slot_scheduler;
     hsync_low=~hsync_high;
     current_line_active=(line_index==4'd2 || line_index==4'd3 || line_index==4'd6);
     next_line_active=(line_index==4'd1 || line_index==4'd2 || line_index==4'd5);
-    delayed_de=current_line_active && (test_x<H_ACTIVE);
+    delayed_de=current_line_active && (test_x<active_size);
     raw_de=(current_line_active && test_x<30) || (next_line_active && test_x>=H_TOTAL-10);
   end
 
@@ -43,9 +45,9 @@ module tb_hdmi_line_slot_scheduler;
     end
   end
 
-  hdmi_line_slot_scheduler #(.VIDEO_LOOKAHEAD_CYCLES(10)) dut_high (
+  hdmi_line_slot_scheduler #(.VIDEO_LOOKAHEAD_CYCLES(10), .H_COUNT_WIDTH(16)) dut_high (
     .pixel_clk(pixel_clk), .aresetn(aresetn),
-    .h_total(H_TOTAL), .h_active_size(H_ACTIVE), .h_sync_start(H_SYNC_START),
+    .h_total(H_TOTAL), .h_active_size(active_size), .h_sync_start(H_SYNC_START),
     .hsync_active_level(1'b1),
     .hdmi_mode_request(hdmi_mode_request), .video_profile_valid(1'b1), .hdmi_mode_active(hdmi_mode_active_high),
     .packet_active(packet_active),
@@ -55,9 +57,9 @@ module tb_hdmi_line_slot_scheduler;
     .line_prepare(prep_high), .symbol_mode(mode_high), .packet_start(start_high)
   );
 
-  hdmi_line_slot_scheduler #(.VIDEO_LOOKAHEAD_CYCLES(10)) dut_low (
+  hdmi_line_slot_scheduler #(.VIDEO_LOOKAHEAD_CYCLES(10), .H_COUNT_WIDTH(16)) dut_low (
     .pixel_clk(pixel_clk), .aresetn(aresetn),
-    .h_total(H_TOTAL), .h_active_size(H_ACTIVE), .h_sync_start(H_SYNC_START),
+    .h_total(H_TOTAL), .h_active_size(active_size), .h_sync_start(H_SYNC_START),
     .hsync_active_level(1'b0),
     .hdmi_mode_request(hdmi_mode_request), .video_profile_valid(1'b1),
     .hdmi_mode_active(hdmi_mode_active_low),
@@ -77,7 +79,7 @@ module tb_hdmi_line_slot_scheduler;
         $fatal(1,"HSYNC正/负极性同步结果不一致");
       if (prep_high) begin
         prepare_events=prepare_events+1;
-        if (dut_high.x_count!==H_ACTIVE-20)
+        if (dut_high.x_count!==active_size-16'd20)
           $fatal(1,"line_prepare不在每行准备点触发");
       end
       if (hdmi_mode_active_high && !delayed_de && mode_high===MODE_CONTROL) begin
@@ -139,7 +141,8 @@ module tb_hdmi_line_slot_scheduler;
     @(negedge pixel_clk); packet_loaded=1;
 
     // 异步复位后应重新等待HSYNC边沿以建立行相位。
-    @(negedge pixel_clk); packet_loaded=0; aresetn=0;
+    prepare_events_before_reset=prepare_events;
+    @(negedge pixel_clk); packet_loaded=0; aresetn=0; active_size=16'd1280;
     repeat(2) @(posedge pixel_clk);
     @(negedge pixel_clk); aresetn=1;
     wait (hdmi_mode_active_high && hdmi_mode_active_low);
@@ -147,6 +150,8 @@ module tb_hdmi_line_slot_scheduler;
     repeat(H_TOTAL+80) @(posedge pixel_clk);
     if (!dut_high.timing_locked || !dut_low.timing_locked)
       $fatal(1,"复位后未重新锁定HSYNC边沿");
+    if (prepare_events <= prepare_events_before_reset)
+      $fatal(1,"reset后未根据新的profile宽度更新line_prepare坐标");
     $display("TEST_PASS: hdmi_line_slot_scheduler, prepare=%0d packets=%0d",prepare_events,packet_starts);
     $finish;
   end
