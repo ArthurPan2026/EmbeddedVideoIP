@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net"><diagram name="HDMI 符号与数据岛" id="packet-pipeline"><mxGraphModel page="1" pageWidth="1600" pageHeight="1050"><root>
-<mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="canvas-background" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="1600" height="1050" as="geometry"/></mxCell>
 <mxCell id="pixel" value="并行视频输入&#xa;RGB / DE / HS / VS" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=21;fillColor=#edf4f8;strokeColor=#466d88;" vertex="1" parent="1"><mxGeometry x="60" y="70" width="280" height="100" as="geometry"/></mxCell>
 <mxCell id="video" value="视频延迟与色彩处理&#xa;RGB / YCbCr 4:4:4（8 bpc）" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=21;fillColor=#edf4f8;strokeColor=#466d88;" vertex="1" parent="1"><mxGeometry x="450" y="70" width="300" height="100" as="geometry"/></mxCell>
 <mxCell id="encoder" value="TMDS 视频编码&#xa;3 通道 × 10-bit 符号" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=21;fillColor=#edf4f8;strokeColor=#466d88;" vertex="1" parent="1"><mxGeometry x="860" y="70" width="280" height="100" as="geometry"/></mxCell>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net"><diagram name="时钟与复位" id="clock-domains"><mxGraphModel page="1" pageWidth="1200" pageHeight="780"><root>
-<mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="canvas-background" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="1200" height="780" as="geometry"/></mxCell>
 <mxCell id="reference" value="50 MHz 参考输入&#xa;VGA / HD 参考生成" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=20;fillColor=#edf4f8;strokeColor=#466d88;" vertex="1" parent="1"><mxGeometry x="70" y="80" width="250" height="100" as="geometry"/></mxCell>
 <mxCell id="mmcm" value="serializer MMCM&#xa;固定反馈倍率 M = 5&#xa;DRP 更新输出分频" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=20;fillColor=#edf4f8;strokeColor=#466d88;" vertex="1" parent="1"><mxGeometry x="430" y="70" width="290" height="120" as="geometry"/></mxCell>
 <mxCell id="ser" value="CLKOUT0 → BUFIO&#xa;串行时钟　5 × 像素频率" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=20;fillColor=#ffffff;strokeColor=#466d88;" vertex="1" parent="1"><mxGeometry x="850" y="70" width="280" height="90" as="geometry"/></mxCell>
