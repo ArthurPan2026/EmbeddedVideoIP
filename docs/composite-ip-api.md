@@ -1,8 +1,8 @@
 # EmbeddedVideoIP 组合式顶层接口
 
-## 产品边界
+## 顶层组成
 
-外部系统在 Vivado IP Integrator 中实例化 `panfpga.org:video:embedded_video_ip:1.0`。该 IP 包含视频源适配、scaler、AXI4-Stream Video 输出桥、运行时视频时序、双 profile 时钟和 7-series HDMI 发送器。HDMI 音频按静态参数裁剪。
+外部系统在 Vivado IP Integrator 中实例化 `panfpga.org:video:embedded_video_ip:1.0`。该 IP 包含视频源适配、scaler、AXI4-Stream Video 输出桥、运行时视频时序、四模式时钟和 7-series HDMI 发送器。HDMI 音频按静态参数配置。
 
 外部系统连接 PS/CIPS、DDR、AXI VDMA、输入帧缓冲、系统时钟和板级引脚。EDID 读取、sink 能力选择和模式请求由外部控制软件完成。
 
@@ -11,10 +11,11 @@
 | 模式码 | CTA VIC | 活动区 | 像素时钟标称值 | 当前实现频率 |
 |---|---:|---:|---:|---:|
 | 0 | 1 | 640×480 | 25.175 MHz | 25.178571 MHz |
-| 1 | 4 | 1280×720 | 74.250 MHz | 74.218750 MHz |
-| 2 | 34 | 1920×1080 | 74.250 MHz | 74.218750 MHz |
+| 1 | 4 | 1280×720 | 74.250 MHz | 74.250000 MHz |
+| 2 | 34 | 1920×1080 | 74.250 MHz | 74.250000 MHz |
+| 3 | 16 | 1920×1080 | 148.500 MHz | 148.500000 MHz |
 
-VIC 4 和 VIC 34 共用 HD clock profile。切换时控制器等待当前帧结束，再切换时钟并等待新模式 VSYNC。
+VIC 4、VIC 34 和 VIC 16 使用 HD 参考源，serializer MMCM 通过输出分频生成对应时钟。切换时控制器等待当前帧结束，再切换时钟并等待新模式 VSYNC。
 
 ## 视频输入
 

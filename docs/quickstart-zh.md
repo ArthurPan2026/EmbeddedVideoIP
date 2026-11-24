@@ -2,9 +2,9 @@
 
 ## 配置概览
 
-在 Vivado IP Integrator 中添加 `panfpga.org:video:embedded_video_ip:1.0`。平台 profile 由外部系统选择，库本身不假设应用、UI 或帧缓存地址。
+在 Vivado IP Integrator 中添加 `panfpga.org:video:embedded_video_ip:1.0`。消费系统配置平台 profile、帧缓冲和应用。
 
-PL 输出 VIC 1、VIC 4 或 VIC 34。外部控制软件读取 EDID 后请求目标模式，并提交输入尺寸、stride 和缩放几何。
+PL 输出 VIC 1、4、34 或 16。外部控制软件读取 EDID 后请求目标模式，并提交输入尺寸、stride 和缩放几何。
 
 ## 打包和验证
 

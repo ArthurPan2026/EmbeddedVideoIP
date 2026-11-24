@@ -6,7 +6,7 @@
 | --- | --- |
 | 工具链 | Vivado/Vitis 2025.2.1 |
 | 目标范围 | AMD/Xilinx 7-series；提供可选 Zynq-7000 adapter |
-| 视频输出 | CEA-861-D VIC 1、VIC 4、VIC 34 |
+| 视频输出 | VIC 1、4、34、16，480p60、720p60、1080p30、1080p60 |
 | 视频颜色 | RGB 4:4:4 8 bpc；可选 YCbCr 4:4:4 |
 | HDMI 音频 | 双声道 24-bit LPCM，默认 48 kHz；静态 profile 支持 96/192 kHz |
 | 输入接口 | VDMA MM2S、HLS AXI4-Stream、BRAM RGB565 |
@@ -25,4 +25,4 @@
 
 ## 新平台适配
 
-新增器件 profile 时，需要配置 HDMI 时钟、TMDS I/O、复位和板级管脚。综合与实现报告应记录器件资源和 setup/hold。平台通过目标板验证后，才能加入支持矩阵。
+新增器件 profile 时，配置 HDMI 时钟、TMDS I/O、复位和板级管脚。综合与实现记录器件资源和 setup/hold，目标板记录显示和音频结果。XC7Z020-1 的 1080p60 使用超频串行化配置，结果见[dev.6 验证记录](validation-2026-11-24.md)。
