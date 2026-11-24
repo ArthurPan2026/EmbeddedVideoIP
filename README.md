@@ -6,11 +6,11 @@ EmbeddedVideoIP 是面向 AMD 7-series FPGA 的 HDMI 视频输出 IP 与 Zynq-70
 
 ![EmbeddedVideoIP 音视频架构](docs/figures/video-overview.svg)
 
-图 1　视频与音频输入经过各自的处理路径，在 HDMI 发送端组合。AXI-Lite 统一控制几何、模式和音频。时钟与复位设计见[架构说明](docs/architecture.md)。
+图 1 视频与音频输入经过各自的处理路径，在 HDMI 发送端组合。AXI-Lite 统一控制几何、模式和音频。时钟与复位设计见[架构说明](docs/architecture.md)。
 
 ![HDMI 编码和数据岛调度](docs/figures/packet-pipeline.svg)
 
-图 2　视频编码与音频封包在行时隙调度下合成为 TMDS 符号，再由四通道串行器输出。完整时钟路径见[时钟与复位图](docs/figures/clock-domains.svg)。
+图 2 视频编码与音频封包在行时隙调度下合成为 TMDS 符号，再由四通道串行器输出。完整时钟路径见[时钟与复位图](docs/figures/clock-domains.svg)。
 
 ## 功能与接口
 

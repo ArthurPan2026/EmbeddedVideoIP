@@ -9,7 +9,7 @@
 | 硬件 IP ZIP | `dcf43eb433a6daf7ae95c4099575474f7626a7c152b17d755ccc620fdeb70d40` |
 | Zynq-7000 PS ZIP | `a62c647e30c4cf40f8ed52892788459b3ec410a282a602d226c6da783e180b38` |
 
-生产 package run 为 `20261123T204357Z-c4e33de76c`。包在工作树开发期间生成，历史 `source_commit=cda0758be7c01c13e00a6519bf505d2fe84fa512` 表示当时 HEAD。实际 RTL/XDC 身份由 canonical 文件哈希固定。本轮提交保留该源码树和原发布 ZIP，更新仓库内快照至同一生产包。
+生产 package run 为 `20261123T204357Z-c4e33de76c`。包在工作树开发期间生成，历史 `source_commit=cda0758be7c01c13e00a6519bf505d2fe84fa512` 表示当时 HEAD。实际 RTL/XDC 身份由 canonical 文件哈希固定。源码提交 `b738f17` 保存该源码树，快照提交 `bbefd16` 同步生产包并更新快照所在路径的 metadata。原发布 ZIP 保持其历史身份。
 
 ## 修复内容
 
@@ -20,6 +20,10 @@
 ## 自动测试
 
 2026-11-24 的 canonical host 回归 40 项通过，覆盖契约、C API、package release、回归执行器和构建输入。此前强制重跑 `tb_video_pipeline_static_profile` 通过，覆盖旁路 SOF 恢复。本轮包快照按注册源码和 metadata 逐文件校验。
+
+GitHub CI run `45315225188` 通过，包含 host C、40 项 Python 测试和便携 RTL 回归。
+
+本机 Icarus 11.0 补跑 6 项便携 RTL 全部通过，覆盖 HDMI 基本编码、PCM 异步 FIFO、packet assembler、行时隙、TMDS 模式选择与视频编码，日志为 `build/delivery-portable-rtl.log`。
 
 ## GBA 消费工程结果
 

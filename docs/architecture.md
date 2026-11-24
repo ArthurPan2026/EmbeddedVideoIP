@@ -4,7 +4,7 @@
 
 ![音视频架构](figures/video-overview.svg)
 
-图 1　外部接口、IP 内部视频和音频路径，以及模式控制、时钟和状态回读。视频实线从左向右流动，在输出桥转换成并行像素，再与音频 packet 汇入发送端。
+图 1 外部接口、IP 内部视频和音频路径，以及模式控制、时钟和状态回读。视频实线从左向右流动，在输出桥转换成并行像素，再与音频 packet 汇入发送端。
 
 视频路径接收 AXI VDMA 的 XRGB8888，支持像素格式转换、最近邻缩放、fit、stretch 与旁路。缩放输入最大 1280×720，输出最大 1920×1080。旁路路径用于消费系统已准备完整输出画布的场景。`TUSER[0]` 标记帧首，`TLAST` 标记行尾。切换或复位后，输入等待首个 SOF 完成帧同步。
 
@@ -23,7 +23,7 @@
 
 ![时钟与复位](figures/clock-domains.svg)
 
-图 2　参考时钟与 serializer MMCM 生成像素及串行时钟。实线表示时钟路径，虚线表示复位和状态控制。
+图 2 参考时钟与 serializer MMCM 生成像素及串行时钟。实线表示时钟路径，虚线表示复位和状态控制。
 
 `hdmi_four_mode_clocks` 选择 VGA/HD 参考，serializer `MMCME2_ADV` 使用固定反馈倍率 5，运行时通过 DRP 修改输出分频。`CLKOUT0` 经 BUFIO 驱动 OSERDESE2 `CLK`，`CLKOUT1` 经 `BUFR_DIVIDE=1` 驱动 `CLKDIV`。独立 BUFG 输出供像素逻辑使用，监测时钟单独缓冲。四条 TMDS 通道共使用 8 个 OSERDESE2。
 
@@ -33,7 +33,7 @@
 
 ![HDMI 符号与数据岛](figures/packet-pipeline.svg)
 
-图 3　并行像素与 PCM 的封包、编码、时隙调度和 TMDS 输出。实线表示数据，虚线表示 profile 与调度控制。
+图 3 并行像素与 PCM 的封包、编码、时隙调度和 TMDS 输出。实线表示数据，虚线表示 profile 与调度控制。
 
 行时隙调度器提前准备 packet 起点和可用窗口，发送器在视频消隐区调度 AVI、Audio InfoFrame、ACR 和 PCM sample packet。静态 profile 的时序与音频常量统一由 VIC 选择。
 
