@@ -1,0 +1,23 @@
+<mxfile host="app.diagrams.net" version="32.5.5">
+  <diagram id="scaler-axis-handshake" name="同步读取与 AXI 背压">
+    <mxGraphModel page="1" pageWidth="1540" pageHeight="700" background="#ffffff" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="title" value="同步 BRAM 读取与 AXI4-Stream 背压" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft YaHei;fontSize=27;fontStyle=1;fontColor=#172b3a;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1460" height="50" as="geometry"/></mxCell>
+        <mxCell id="s0" value="行选择&#xa;line_valid = 1&#xa;line_y = source_y" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=16;fillColor=#e8f5e9;strokeColor=#4e7a50;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="35" y="235" width="195" height="145" as="geometry"/></mxCell>
+        <mxCell id="s1" value="时钟沿 n&#xa;read_issue = 1&#xa;address = source_x" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=16;fillColor=#e8f5e9;strokeColor=#4e7a50;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="285" y="235" width="195" height="145" as="geometry"/></mxCell>
+        <mxCell id="s2" value="时钟沿 n+1&#xa;BRAM 更新 read_data&#xa;read_valid = 1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=16;fillColor=#e8f5e9;strokeColor=#4e7a50;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="535" y="235" width="195" height="145" as="geometry"/></mxCell>
+        <mxCell id="s3" value="AXI 输出有效&#xa;TVALID = 1&#xa;像素与 SOF / EOL 稳定" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=16;fillColor=#eaf2f8;strokeColor=#466d88;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="785" y="235" width="195" height="145" as="geometry"/></mxCell>
+        <mxCell id="s4" value="下游接受&#xa;TREADY = 1&#xa;握手完成" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=16;fillColor=#e0f2f1;strokeColor=#568a88;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="1035" y="235" width="195" height="145" as="geometry"/></mxCell>
+        <mxCell id="s5" value="推进输出状态&#xa;emit_x / X-DDA&#xa;活动像素计数" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=16;fillColor=#fff2cc;strokeColor=#b38700;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="1285" y="235" width="195" height="145" as="geometry"/></mxCell>
+        <mxCell id="e0" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#4e7a50;strokeWidth=2;" edge="1" parent="1" source="s0" target="s1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#4e7a50;strokeWidth=2;" edge="1" parent="1" source="s1" target="s2"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#466d88;strokeWidth=2;" edge="1" parent="1" source="s2" target="s3"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#568a88;strokeWidth=2;" edge="1" parent="1" source="s3" target="s4"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#b38700;strokeWidth=2;" edge="1" parent="1" source="s4" target="s5"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="stall" value="TREADY = 0：保持当前输出像素及 SOF / EOL；不发出下一次 BRAM 读取，也不推进 emit_x 与活动窗口计数。" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Microsoft YaHei;fontSize=17;fontStyle=1;fillColor=#fff8e1;strokeColor=#c5a44d;strokeWidth=2;fontColor=#263238;" vertex="1" parent="1"><mxGeometry x="220" y="500" width="1100" height="90" as="geometry"/></mxCell>
+        <mxCell id="foot" value="计数器只由 TVALID ∧ TREADY 的成功传输驱动，避免输出停顿期间像素坐标或边界状态提前变化。" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Microsoft YaHei;fontSize=16;fontColor=#334955;" vertex="1" parent="1"><mxGeometry x="140" y="625" width="1260" height="40" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

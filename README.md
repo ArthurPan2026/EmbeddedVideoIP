@@ -1,16 +1,20 @@
 # EmbeddedVideoIP
 
-EmbeddedVideoIP 是面向 AMD 7-series FPGA 的 HDMI 视频输出 IP 与 Zynq-7000 PS C 库。它提供视频源适配、最近邻缩放、四模式时序、PCM 音频封包和 TMDS 发送。当前源码与消费包版本为 `0.3.0-dev.6`，Vivado IP 的 `coreRevision` 为 `7`。
+EmbeddedVideoIP 是面向 AMD 7-series FPGA 的 HDMI 视频输出 IP 与 Zynq-7000 PS C 库。它提供视频源适配、最近邻缩放、四模式时序、PCM 音频封包和 TMDS 发送。当前源码与消费包版本为 `0.3.0-dev.15`，Vivado IP 的 `coreRevision` 为 `16`。
 
 ## 架构总览
 
 ![EmbeddedVideoIP 音视频架构](docs/figures/video-overview.svg)
 
-图 1 视频与音频输入经过各自的处理路径，在 HDMI 发送端组合。AXI-Lite 统一控制几何、模式和音频。时钟与复位设计见[架构说明](docs/architecture.md)。
+图 1 展示视频、PCM、控制、时钟与 TMDS 的系统边界。缩放器内部数据路径见图 2，完整结构见[架构说明](docs/architecture.md)。
+
+![双行 BRAM 预取缩放器数据路径](docs/figures/scaler-prefetch.svg)
+
+图 2 输入帧校验、双行缓存、同步 BRAM 读取和旁路输出路径。
 
 ![HDMI 编码和数据岛调度](docs/figures/packet-pipeline.svg)
 
-图 2 视频编码与音频封包在行时隙调度下合成为 TMDS 符号，再由四通道串行器输出。完整时钟路径见[时钟与复位图](docs/figures/clock-domains.svg)。
+图 3 视频编码与音频封包在行时隙调度下合成为 TMDS 符号，再由四通道串行器输出。完整时钟路径见[时钟与复位图](docs/figures/clock-domains.svg)。
 
 ## 功能与接口
 
@@ -23,7 +27,7 @@ EmbeddedVideoIP 是面向 AMD 7-series FPGA 的 HDMI 视频输出 IP 与 Zynq-70
 | 输出接口 | 三路 TMDS 数据差分对与一路时钟差分对 |
 | 软件库 | 平台中立 C API 与 Zynq-7000 适配 |
 
-1080p60 使用 148.5 MHz 像素时钟和 742.5 MHz 串行时钟，在 XC7Z020-1 上按超频实验配置维护。实现报告单列 OSERDESE2 pulse-width 例外。GBA 消费工程的最终 setup/hold、DRC 和实板结果见[验证记录](docs/validation-2026-11-24.md)。
+1080p60 使用 148.5 MHz 像素时钟和 742.5 MHz 串行时钟，在 XC7Z020-1 上运行。实现报告单列 OSERDESE2 pulse-width 例外。dev.15 的 XSim、主机测试和包身份见[验证记录](docs/validation-2026-11-25.md)，GBA 消费工程的硬件与实板结果见[2026-11-25 验证记录](https://github.com/ArthurPan2026/GBA-Zynq7020/blob/main/docs/validation-2026-11-25-delivery.md)。
 
 ## 集成到工程
 
@@ -32,7 +36,7 @@ EmbeddedVideoIP 是面向 AMD 7-series FPGA 的 HDMI 视频输出 IP 与 Zynq-70
 3. 按[快速开始](docs/ip-package-quickstart.md) 连接系统时钟、复位、AXI-Lite、视频、PCM 和 TMDS。
 4. Zynq 应用使用同版本的 PS ZIP，配置 `Video/Lib/Inc` 和平台适配目录。
 
-当前 dev.6 的生产包及 GBA 导入身份记录在[交付验证记录](docs/validation-2026-11-24.md)。GitHub 已发布版本以 Releases 页面为准。
+dev.15 的生产包身份、SHA-256 与 GBA 导入目录树摘要见[交付验证记录](docs/validation-2026-11-25.md)。GitHub 已发布版本以 Releases 页面为准。
 
 ## 源码开发与发布产物
 
@@ -51,7 +55,7 @@ canonical RTL 位于 `ip/video_pipeline_1_0/`。打包阶段生成 IP 并比较�
 
 - [接口与四模式参数](docs/composite-ip-api.md)、[寄存器表](docs/register-map.md)。
 - [HDMI 1.4b 实现与测试映射](docs/hdmi-1.4b-conformance.md)。
-- [验证方法](docs/validation.md)、[2026-11-24 源码与产物记录](docs/validation-2026-11-24.md)。
+- [验证方法](docs/validation.md)、[2026-11-25 dev.15 源码与产物记录](docs/validation-2026-11-25.md)。
 
 RTL/XSim 结果按测试台记录。消费工程实板结果按器件、时钟配置、图像采集、音频采集和人工观察分别归档。
 

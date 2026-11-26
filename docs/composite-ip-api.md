@@ -15,13 +15,13 @@
 | 2 | 34 | 1920×1080 | 74.250 MHz | 74.250000 MHz |
 | 3 | 16 | 1920×1080 | 148.500 MHz | 148.500000 MHz |
 
-VIC 4、VIC 34 和 VIC 16 使用 HD 参考源，serializer MMCM 通过输出分频生成对应时钟。切换时控制器等待当前帧结束，再切换时钟并等待新模式 VSYNC。
+VIC 4、VIC 34 和 VIC 16 使用 HD 参考源，serializer MMCM 通过输出分频生成对应时钟。切换时控制器等待当前帧结束，再切换时钟并等待新模式 VSYNC。双行 BRAM 读取、行 bank 生命周期和 AXI 停顿行为见[缩放器架构图](architecture.md#双行-bram-预取缩放器)。
 
 ## 视频输入
 
 `s_axis_vdma` 接收 AMD AXI VDMA MM2S 的 32-bit 像素流。`TUSER[0]` 标记帧首，`TLAST` 标记行尾。输入尺寸最大 1280×720，源帧、stride 和帧缓存由外部系统配置。
 
-视频处理核支持 RGB565、RGB888 和 XRGB8888 输入转换。scaler 支持旁路、最近邻缩放、fit 和 stretch，输出尺寸最大 1920×1080。行缓冲可选 LUTRAM 或同步 BRAM。
+视频处理核支持 RGB565、RGB888 和 XRGB8888 输入转换。scaler 支持精确 1:1 旁路、最近邻缩放、fit 和 stretch，输出尺寸最大 1920×1080。`LINE_BUFFER_IMPLEMENTATION=0` 选择单行 scaler，可使用 LUTRAM 或同步 BRAM。`LINE_BUFFER_IMPLEMENTATION=1` 选择双行 BRAM 预取 scaler。
 
 ## PCM 音频输入
 
