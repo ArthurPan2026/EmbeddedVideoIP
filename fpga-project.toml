@@ -55,17 +55,17 @@ top = "tb_video_bram_rgb565_reader"
 
 [[tests.bench]]
 name = "tb_video_pipeline_v1_0"
-sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_v1_0.sv"]
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler_prefetch.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_v1_0.sv"]
 top = "tb_video_pipeline_v1_0"
 
 [[tests.bench]]
 name = "tb_video_pipeline_output_mode"
-sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler_prefetch.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
 top = "tb_video_pipeline_output_mode"
 
 [[tests.bench]]
 name = "tb_video_pipeline_static_profile"
-sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_static_profile.sv"]
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler_prefetch.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_static_profile.sv"]
 top = "tb_video_pipeline_static_profile"
 
 [[tests.bench]]
@@ -192,5 +192,10 @@ success_markers = ["EMBEDDED_VIDEO_IP_RELEASE_PASS"]
 
 [[tests.bench]]
 name = "tb_video_pipeline_output_mode_1080p60"
-sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler.sv", "ip/video_pipeline_1_0/hdl/axis_rgb888.sv", "ip/video_pipeline_1_0/hdl/axis_video_mux3.sv", "ip/video_pipeline_1_0/hdl/video_bram_rgb565_reader.sv", "ip/video_pipeline_1_0/hdl/axi_lite_video_regs.sv", "ip/video_pipeline_1_0/hdl/axis_video_nn_scaler_prefetch.sv", "ip/video_pipeline_1_0/hdl/video_pipeline_v1_0.sv", "tests/rtl/tb_video_pipeline_output_mode.sv"]
 top = "tb_video_pipeline_output_mode_1080p60"
+
+[[tests.bench]]
+name = "tb_axis_video_nn_scaler_prefetch"
+sources = ["ip/video_pipeline_1_0/hdl/axis_video_nn_scaler_prefetch.sv", "tests/rtl/tb_axis_video_nn_scaler_prefetch.sv"]
+top = "tb_axis_video_nn_scaler_prefetch"

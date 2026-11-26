@@ -36,6 +36,7 @@ PACKAGE_REPO = OUT / "packages/ip_repo"
 
 PACKAGE_HDL_FILES = (
     "axis_video_nn_scaler.sv",
+    "axis_video_nn_scaler_prefetch.sv",
     "axis_rgb888.sv",
     "axis_video_mux3.sv",
     "video_bram_rgb565_reader.sv",
@@ -45,6 +46,7 @@ PACKAGE_HDL_FILES = (
 )
 SYNTH_HDL_FILES = (
     "axis_video_nn_scaler.sv",
+    "axis_video_nn_scaler_prefetch.sv",
     "axis_rgb888.sv",
     "axis_video_mux3.sv",
     "video_bram_rgb565_reader.sv",
@@ -665,6 +667,7 @@ def command_sim(_: argparse.Namespace) -> None:
     env["VIVADO_BIN"] = str(vivado.parent)
     env["PYTHON_BIN"] = sys.executable
     inputs = input_manifest("sim")
+    # Release regression uses the standalone xelab -a -R runner by default.
     run_stage(
         "sim", [str(script)], vivado, inputs, tool_version=version,
         env=env, success_marker="VIDEO_TESTS_PASS",

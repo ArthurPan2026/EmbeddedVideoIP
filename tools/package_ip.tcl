@@ -17,6 +17,7 @@ create_project -force video_pipeline_package $temp_dir -part xc7z020clg400-1
 set_property target_language Verilog [current_project]
 foreach name {
   axis_video_nn_scaler.sv
+  axis_video_nn_scaler_prefetch.sv
   axis_rgb888.sv
   axis_video_mux3.sv
   video_bram_rgb565_reader.sv

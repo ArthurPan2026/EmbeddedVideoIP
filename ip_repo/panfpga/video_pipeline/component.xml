@@ -376,7 +376,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>de9faaaf</spirit:value>
+            <spirit:value>ccd89a89</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -392,7 +392,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>de9faaaf</spirit:value>
+            <spirit:value>ccd89a89</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -1227,6 +1227,11 @@
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
       <spirit:file>
+        <spirit:name>src/axis_video_nn_scaler_prefetch.sv</spirit:name>
+        <spirit:fileType>systemVerilogSource</spirit:fileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+      </spirit:file>
+      <spirit:file>
         <spirit:name>src/video_bram_rgb565_reader.sv</spirit:name>
         <spirit:fileType>systemVerilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
@@ -1266,6 +1271,11 @@
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
       <spirit:file>
+        <spirit:name>src/axis_video_nn_scaler_prefetch.sv</spirit:name>
+        <spirit:fileType>systemVerilogSource</spirit:fileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+      </spirit:file>
+      <spirit:file>
         <spirit:name>src/video_bram_rgb565_reader.sv</spirit:name>
         <spirit:fileType>systemVerilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
@@ -1291,7 +1301,7 @@
       </spirit:file>
     </spirit:fileSet>
   </spirit:fileSets>
-  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.3.0-dev.2.</spirit:description>
+  <spirit:description>EmbeddedVideoIP internal video pipeline for product release 0.3.0-dev.15.</spirit:description>
   <spirit:parameters>
     <spirit:parameter>
       <spirit:name>MAX_INPUT_WIDTH</spirit:name>
@@ -1412,17 +1422,17 @@
       <xilinx:taxonomies>
         <xilinx:taxonomy>/Video</xilinx:taxonomy>
       </xilinx:taxonomies>
-      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.3.0-dev.2</xilinx:displayName>
+      <xilinx:displayName>EmbeddedVideoIP internal video pipeline 0.3.0-dev.15</xilinx:displayName>
       <xilinx:definitionSource>package_project</xilinx:definitionSource>
       <xilinx:vendorDisplayName>Personal FPGA IP</xilinx:vendorDisplayName>
       <xilinx:coreRevision>1</xilinx:coreRevision>
-      <xilinx:coreCreationDateTime>2026-11-20T08:12:55Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-11-25T01:09:23Z</xilinx:coreCreationDateTime>
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2025.2.1</xilinx:xilinxVersion>
       <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="b9a3da76"/>
       <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="6a6443ca"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="9930fcc4"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="e444762e"/>
       <xilinx:checksum xilinx:scope="ports" xilinx:value="cf9c6346"/>
       <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="fd32180c"/>
       <xilinx:checksum xilinx:scope="parameters" xilinx:value="71631300"/>

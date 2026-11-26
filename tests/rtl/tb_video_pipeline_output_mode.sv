@@ -161,7 +161,7 @@ module tb_video_pipeline_output_mode #(parameter bit TEST_ENABLE_1080P60 = 1'b0)
     if (readback[29:28] !== 2'd2 || readback[30] !== 1'b0 || readback[31] !== 1'b0)
       $fatal(1, "TEST_FAIL: 1080p30 status bits mismatch %h", readback);
     repeat (2) @(posedge clk);
-    if (dut.gen_scaler.u_scaler.cfg_invalid_geometry !== 1'b0)
+    if (dut.gen_scaler.gen_singleline.u_scaler.cfg_invalid_geometry !== 1'b0)
       $fatal(1, "TEST_FAIL: native 1280x720 input was rejected by scaler geometry");
 
     // Mode 3 is rejected when the 1080p60 profile is disabled. With the

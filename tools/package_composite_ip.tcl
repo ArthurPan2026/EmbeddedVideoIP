@@ -95,7 +95,7 @@ foreach relative_file [list $package_vout_wrapper_relative $package_vout_impl_re
   set_property type verilogSource $synth_file
   set_property type verilogSource $sim_file
 }
-set_property core_revision 7 $core
+set_property core_revision 16 $core
 set version_fd [open [file join $repo_root VERSION] r]
 set product_version [string trim [read $version_fd]]
 close $version_fd

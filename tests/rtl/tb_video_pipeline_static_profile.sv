@@ -78,7 +78,8 @@ module tb_video_pipeline_static_profile;
     .FIXED_SOURCE(2),
     .FORMAT_SELECT_MODE(1),
     .FIXED_FORMAT(2),
-    .ENABLE_SCALER(0),
+    .ENABLE_SCALER(1),
+    .LINE_BUFFER_IMPLEMENTATION(1),
     .ENABLE_HDMI_AUDIO(0)
   ) dut (
     .aclk(aclk), .aresetn(aresetn),
@@ -354,9 +355,9 @@ module tb_video_pipeline_static_profile;
     if (readback !== 32'd0)
       $fatal(1, "格式profile错误未清除：%08x", readback);
 
-    // 非1:1几何配置应被拒绝，不能静默直通或缩放。
-    axi_write(6'h04, 32'h00f0_0140); // 320x240
-    axi_write(6'h08, 32'd1280);
+    // 超出消费工程输入上限的几何配置应被拒绝。
+    axi_write(6'h04, 32'h00f0_0320); // 800x240
+    axi_write(6'h08, 32'd3200);
     axi_write(6'h1c, 32'h00f0_0140); // 活动区域320x240
     axi_write(6'h20, 32'd0);
     axi_write(6'h24, 32'd0);
@@ -366,9 +367,9 @@ module tb_video_pipeline_static_profile;
     repeat (3) @(posedge aclk);
     axi_read(6'h18, readback);
     if (readback[4] !== 1'b1)
-      $fatal(1, "非1:1几何配置未设置ERROR_FLAGS[4]：%08x", readback);
+      $fatal(1, "超出输入宽度上限未设置ERROR_FLAGS[4]：%08x", readback);
     if (m_axis_video_tvalid !== 1'b0)
-      $fatal(1, "非1:1几何配置未安全拒绝");
+      $fatal(1, "超出输入宽度上限的几何未安全拒绝");
 
     $display("TEST_PASS: tb_video_pipeline_static_profile");
     $finish;

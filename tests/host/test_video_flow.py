@@ -98,6 +98,22 @@ class VideoFlowProfileTests(unittest.TestCase):
         with self.assertRaises(video_flow.FlowError):
             video_flow.synth_profile_generics("unknown")
 
+    def test_canonical_sim_uses_standalone_xelab_run(self) -> None:
+        vivado = Path("/fake/Vivado/bin/vivado")
+        with (
+            patch.object(video_flow, "resolve_vivado", return_value=vivado),
+            patch.object(video_flow, "vivado_version", return_value="Vivado 2025.2.1"),
+            patch.object(video_flow, "input_manifest", return_value={"rtl": "hash"}),
+            patch.object(video_flow, "run_stage") as run_stage,
+        ):
+            video_flow.command_sim(SimpleNamespace())
+
+        args, kwargs = run_stage.call_args
+        self.assertEqual(args[0], "sim")
+        self.assertEqual(args[1], [str(REPO_ROOT / "tools/run_video_tests.sh")])
+        self.assertNotIn("--standard-xsim", args[1])
+        self.assertEqual(kwargs["success_marker"], "VIDEO_TESTS_PASS")
+
     def test_synth_tcl_adds_validated_generic_pairs(self) -> None:
         synth_tcl = (REPO_ROOT / "tools/synth_core.tcl").read_text(encoding="utf-8")
         self.assertEqual(synth_tcl.count("lappend synth_command -generic"), 1)
